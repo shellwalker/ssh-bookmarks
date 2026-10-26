@@ -12,6 +12,10 @@ struct HostEditorView: View {
     @State private var password = ""
     @State private var validationError: String?
     @State private var errorField: HostField?
+    @State private var discoveredKeys: [PublicKeyCandidate] = []
+    @State private var showingCopyConfirm = false
+
+    @EnvironmentObject private var settings: SettingsStore
 
     let groups: [HostGroup]
     let onSave: (SSHHost) -> Void
@@ -52,6 +56,7 @@ struct HostEditorView: View {
                         Text("Private Key").tag(AuthMethod.publicKey)
                         Text("Password").tag(AuthMethod.password)
                     }
+                    publicKeyGuidance
                     if draft.authMethod == .publicKey {
                         HStack {
                             TextField(
@@ -65,7 +70,7 @@ struct HostEditorView: View {
                     }
                     if draft.authMethod == .password {
                         SecureField("Password", text: $password, prompt: Text("Stored in Keychain"))
-                        Text("Password login will be wired through SSH_ASKPASS in milestone M3.")
+                        Text("Password stays in the Keychain on this Mac and is not synced.")
                             .font(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -103,6 +108,94 @@ struct HostEditorView: View {
             .padding(12)
         }
         .frame(width: 480, height: 560)
+        .onAppear(perform: preparePublicKeyDefault)
+        .alert("Install the public key?", isPresented: $showingCopyConfirm) {
+            Button("Open Terminal", action: installPublicKey)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(
+                """
+                MenuSSH will open your terminal and run ssh-copy-id there. \
+                You confirm the login in that window. It is never run in the background.
+                """
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var publicKeyGuidance: some View {
+        if discoveredKeys.isEmpty {
+            Text("No public keys in ~/.ssh. Create one in Terminal:")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            Text(verbatim: PublicKeyOnboarding.keygenCommand)
+                .font(.system(size: 11, design: .monospaced))
+                .textSelection(.enabled)
+        } else {
+            Text("A public key is recommended. The private key stays on this Mac.")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+            if discoveredKeys.count > 1 {
+                Picker("Key File", selection: identitySelection) {
+                    ForEach(discoveredKeys) { key in
+                        Text(verbatim: key.fileName).tag(key.privatePath)
+                    }
+                }
+            }
+        }
+        if draft.authMethod == .publicKey {
+            Button("Install Public Key in Terminal…") { showingCopyConfirm = true }
+                .disabled(draft.hostname.trimmingCharacters(in: .whitespaces).isEmpty || (draft.identityFile ?? "").isEmpty)
+        }
+    }
+
+    private var identitySelection: Binding<String> {
+        Binding(
+            get: { draft.identityFile ?? "" },
+            set: { draft.identityFile = $0.isEmpty ? nil : $0 }
+        )
+    }
+
+    private func preparePublicKeyDefault() {
+        let directory = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh").path
+        let names = (try? FileManager.default.contentsOfDirectory(atPath: directory)) ?? []
+        discoveredKeys = PublicKeyOnboarding.candidates(fileNames: names, directory: directory)
+        let isNew = draft.hostname.isEmpty && draft.label.isEmpty && draft.authMethod == .automatic
+        guard isNew, let preferred = PublicKeyOnboarding.preferred(discoveredKeys) else { return }
+        draft.authMethod = .publicKey
+        draft.identityFile = preferred.privatePath
+    }
+
+    private func installPublicKey() {
+        guard let identity = draft.identityFile, !identity.isEmpty else { return }
+        let publicPath = identity.hasSuffix(".pub") ? identity : identity + ".pub"
+        let trimmedPort = portText.trimmingCharacters(in: .whitespaces)
+        let port: Int?
+        if trimmedPort.isEmpty {
+            port = nil
+        } else if let value = Int(trimmedPort), (1...65535).contains(value) {
+            port = value
+        } else {
+            fail(String(localized: "Port must be 1–65535."), field: .port)
+            return
+        }
+        guard
+            let args = PublicKeyOnboarding.copyIDArguments(
+                publicPath: publicPath,
+                username: draft.username,
+                hostname: draft.hostname.trimmingCharacters(in: .whitespaces),
+                port: port
+            )
+        else {
+            fail(String(localized: "Host is required."), field: .hostname)
+            return
+        }
+        let launcher = TerminalLauncher(sshPath: settings.sshPath, terminal: settings.terminal, openMode: settings.openMode)
+        do {
+            _ = try launcher.launchUserCommand(args)
+        } catch {
+            validationError = error.localizedDescription
+        }
     }
 
     private func chooseKeyFile() {

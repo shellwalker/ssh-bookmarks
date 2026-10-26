@@ -31,14 +31,62 @@ final class HostStoreModel: ObservableObject {
             library = try fileStore.load()
         } catch {
             lastError = L10n.format("Failed to read hosts file: %@", error.localizedDescription)
+            return
         }
+        syncNow()
     }
 
-    private func persist() {
+    private var deviceId: String { SettingsStore.shared.deviceId }
+
+    /// 先写本机 hosts.json，再按设置合并同步文件。返回打成平局的冲突条数；同步关闭时为 0。
+    @discardableResult
+    private func persist() -> Int {
+        library = library.pruningTombstones(now: Date())
         do {
             try fileStore.save(library)
         } catch {
             lastError = L10n.format("Failed to save hosts file: %@", error.localizedDescription)
+            return 0
+        }
+        let conflicts = applySync()
+        if conflicts > 0 {
+            lastNotice = L10n.format("Sync resolved %lld conflicting items by keeping one copy.", Int64(conflicts))
+        }
+        return conflicts
+    }
+
+    /// 设置里打开同步，或启动时拉取。不把“另一边较新”当成冲突。
+    func syncNow() {
+        let conflicts = applySync()
+        if conflicts > 0 {
+            lastNotice = L10n.format("Sync resolved %lld conflicting items by keeping one copy.", Int64(conflicts))
+        }
+    }
+
+    private func applySync() -> Int {
+        guard SettingsStore.shared.syncEnabled else { return 0 }
+        do {
+            let result = try SyncReconciler.reconcile(
+                local: library,
+                directory: SettingsStore.shared.resolvedSyncDirectory,
+                deviceId: deviceId
+            )
+            library = result.library
+            try fileStore.save(library)
+            return result.conflictCount
+        } catch let error as SyncFormatError {
+            switch error {
+            case .newerSchema:
+                lastError = String(localized: "Sync file is from a newer MenuSSH. Update before syncing.")
+            case .unreadablePrimary:
+                lastError = String(localized: "The sync file could not be read. It was left unchanged.")
+            case .secretKey:
+                lastError = String(localized: "Refused to write the sync file because it contained a secret field.")
+            }
+            return 0
+        } catch {
+            lastError = L10n.format("Failed to sync hosts: %@", error.localizedDescription)
+            return 0
         }
     }
 
@@ -70,12 +118,13 @@ final class HostStoreModel: ObservableObject {
     func save(_ host: SSHHost) {
         var updated = host
         updated.updatedAt = Date()
+        updated.updatedByDeviceId = deviceId
         library.upsert(updated)
         persist()
     }
 
     func delete(hostID: UUID) {
-        library.removeHost(id: hostID)
+        library.removeHost(id: hostID, deviceId: deviceId)
         keychain.deleteAll(hostID: hostID)
         persist()
     }
@@ -89,13 +138,20 @@ final class HostStoreModel: ObservableObject {
     /// 复制站点，返回副本（名称加“副本”后缀）。
     @discardableResult
     func duplicate(_ host: SSHHost) -> SSHHost? {
-        let copy = library.duplicateHost(id: host.id, labelSuffix: String(localized: " copy"))
+        guard var copy = library.duplicateHost(id: host.id, labelSuffix: String(localized: " copy")) else { return nil }
+        copy.updatedByDeviceId = deviceId
+        library.upsert(copy)
         persist()
         return copy
     }
 
     func move(_ host: SSHHost, toGroup groupID: UUID?) {
-        if library.moveHost(id: host.id, toGroup: groupID) { persist() }
+        guard library.moveHost(id: host.id, toGroup: groupID) else { return }
+        if var moved = library.hosts.first(where: { $0.id == host.id }) {
+            moved.updatedByDeviceId = deviceId
+            library.upsert(moved)
+        }
+        persist()
     }
 
     enum GroupNameError: LocalizedError {
@@ -115,7 +171,8 @@ final class HostStoreModel: ObservableObject {
         let name = HostInputParser.normalizedName(rawName)
         guard !name.isEmpty else { throw GroupNameError.empty }
         guard !library.hasGroup(named: name) else { throw GroupNameError.duplicate(name) }
-        let group = HostGroup(name: name, sortOrder: (library.groups.map(\.sortOrder).max() ?? -1) + 1)
+        var group = HostGroup(name: name, sortOrder: (library.groups.map(\.sortOrder).max() ?? -1) + 1)
+        group.updatedByDeviceId = deviceId
         library.upsert(group)
         persist()
         return group
@@ -127,12 +184,14 @@ final class HostStoreModel: ObservableObject {
         guard !library.hasGroup(named: name, excluding: group.id) else { throw GroupNameError.duplicate(name) }
         var g = group
         g.name = name
+        g.updatedAt = Date()
+        g.updatedByDeviceId = deviceId
         library.upsert(g)
         persist()
     }
 
     func deleteGroup(id: UUID) {
-        library.removeGroup(id: id)
+        library.removeGroup(id: id, deviceId: deviceId)
         persist()
     }
 
@@ -146,7 +205,10 @@ final class HostStoreModel: ObservableObject {
         let existing = Set(library.hosts.map { $0.hostname.lowercased() })
         let newHosts = SSHConfigParser.makeHosts(from: SSHConfigParser.parse(text))
             .filter { !existing.contains($0.hostname.lowercased()) }
-        for h in newHosts { library.upsert(h) }
+        for var h in newHosts {
+            h.updatedByDeviceId = deviceId
+            library.upsert(h)
+        }
         persist()
         return newHosts.count
     }
@@ -158,19 +220,19 @@ final class HostStoreModel: ObservableObject {
         do {
             let notice = try launcher.launch(host)
             lastError = nil
+            var h = host
+            h.lastConnectedAt = Date()
+            library.upsert(h)
+            let conflicts = persist()
             if let notice {
                 lastNotice = L10n.format(
                     "%@ is not installed. Opened this session in %@ instead.",
                     notice.missing.displayName,
                     notice.used.displayName
                 )
-            } else {
+            } else if conflicts == 0 {
                 lastNotice = nil
             }
-            var h = host
-            h.lastConnectedAt = Date()
-            library.upsert(h)
-            persist()
         } catch {
             lastError = error.localizedDescription
             lastNotice = nil

@@ -15,6 +15,9 @@ final class SettingsStore: ObservableObject {
         static let openMode = "terminalOpenMode"
         static let sshPath = "sshPath"
         static let closePanelAfterConnect = "closePanelAfterConnect"
+        static let syncEnabled = "syncEnabled"
+        static let syncFolder = "syncFolderPath"
+        static let deviceId = "syncDeviceId"
     }
 
     private let defaults: UserDefaults
@@ -66,6 +69,39 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(closePanelAfterConnect, forKey: Keys.closePanelAfterConnect) }
     }
 
+    /// 默认关闭。打开前要明确告诉用户：同步文件里的主机名和用户名是明文。
+    @Published var syncEnabled: Bool {
+        didSet { defaults.set(syncEnabled, forKey: Keys.syncEnabled) }
+    }
+
+    /// nil 表示用 iCloud Drive/MenuSSH。用户可以改成任意文件夹。
+    @Published var syncFolderPath: String? {
+        didSet {
+            if let syncFolderPath, !syncFolderPath.isEmpty {
+                defaults.set(syncFolderPath, forKey: Keys.syncFolder)
+            } else {
+                defaults.removeObject(forKey: Keys.syncFolder)
+            }
+        }
+    }
+
+    var resolvedSyncDirectory: URL {
+        if let syncFolderPath, !syncFolderPath.isEmpty {
+            return URL(fileURLWithPath: syncFolderPath, isDirectory: true)
+        }
+        return SyncPaths.iCloudDirectory(home: NSHomeDirectory())
+    }
+
+    /// 这台 Mac 的稳定 id。时间戳相同时，字典序更大的一边胜出。
+    var deviceId: String {
+        if let existing = defaults.string(forKey: Keys.deviceId), !existing.isEmpty {
+            return existing
+        }
+        let created = UUID().uuidString
+        defaults.set(created, forKey: Keys.deviceId)
+        return created
+    }
+
     /// 下次设置窗口出现时切到这一页（关于 / 从菜单打开）。用完即清。
     @Published var pendingSettingsPane: SettingsPaneID?
 
@@ -80,6 +116,9 @@ final class SettingsStore: ObservableObject {
         openMode = TerminalOpenMode(rawValue: defaults.string(forKey: Keys.openMode) ?? "") ?? .newWindow
         sshPath = defaults.string(forKey: Keys.sshPath) ?? "/usr/bin/ssh"
         closePanelAfterConnect = defaults.object(forKey: Keys.closePanelAfterConnect) as? Bool ?? true
+        syncEnabled = defaults.object(forKey: Keys.syncEnabled) as? Bool ?? false
+        let storedFolder = defaults.string(forKey: Keys.syncFolder)
+        syncFolderPath = (storedFolder?.isEmpty == false) ? storedFolder : nil
     }
 
     /// 修改语言后“立即重启”：1 秒后由 /bin/sh 重新打开本应用，然后退出。

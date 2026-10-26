@@ -1,6 +1,6 @@
 # 设计 v2：同步、终端回退、凭据
 
-本文只定方案。代码只做了 B3（终端按版本选择启动方式，以及首选终端缺失时的回退）。其余不在本轮实现。
+B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代码。代码签名和 CloudKit 仍然不做。
 
 和 `docs/design.md` 的关系：存储仍是本机 `hosts.json` + 钥匙串；终端调起仍以该文档 §4 为准。这里补充换机、多机和「新 Mac 上终端没装」时怎么处理。
 
@@ -52,7 +52,7 @@
 
 单测在 `MenuSSHCore`：`TerminalLaunchPlannerTests`（除 Ghostty 外版本不影响路径）、`TerminalFallbackTests`（已安装则保持、缺 Ghostty 且有 iTerm 则用 iTerm、缺 iTerm 且有 Ghostty 则用 Ghostty、都没有则 Terminal 并提示、首选 Terminal 即使安装集合为空也不提示）。
 
-## B4 便携同步文件与本机凭据（只设计）
+## B4 便携同步文件与本机凭据（已按下面的默认实现）
 
 同步文件是版本化 JSON，建议名 `menu-ssh-sync.json`。内容是 hosts 和 groups，字段与 `hosts.json` 对齐，但不含密码、口令、私钥材料。用户指定一个文件夹（iCloud Drive、Dropbox 或任意目录）。文件夹用 security-scoped bookmark 记在 UserDefaults；iCloud Drive 只是这个文件夹的一种选法，合并算法与 B2 相同，不另写一套。
 
@@ -72,17 +72,27 @@
 
 | 阶段 | 内容 | 状态 |
 | --- | --- | --- |
-| 0 | 终端按版本选路径；首选缺失时回退并提示，不改已存偏好 | 本轮已做 |
-| 1 | 同步文件、文件夹选择、按 id / `updatedAt` / 墓碑合并。不含密码 | 未做 |
-| 2 | `SSH_ASKPASS`、本机限定的钥匙串、新建站点时的公钥引导 | 未做 |
+| 0 | 终端按版本选路径；首选缺失时回退并提示，不改已存偏好 | 已做 |
+| 1 | 同步文件、文件夹选择、按 id / `updatedAt` / 墓碑合并。不含密码。默认关闭 | 已做 |
+| 2 | `SSH_ASKPASS`、本机限定的钥匙串、新建站点时的公钥引导 | 已做 |
 | 3 | 代码签名与公证 | 遗留，见文首 |
 | 4 | 有开发者账号后再评估 CloudKit | 未做 |
 
+## 已拍板（本分支实现）
+
+1. 同步文件夹默认是 iCloud Drive 的 `MenuSSH/`（`~/Library/Mobile Documents/com~apple~CloudDocs/MenuSSH/menu-ssh-sync.json`）。设置里可以改成任意文件夹。
+2. 墓碑保留 90 天，过期后不再压制站点。
+3. 终端回退不写回已保存的偏好，只影响这一次会话。
+4. 时间戳能分出先后时静默合并。只有时间戳相同且内容不同（或“还在 / 已删”打成平局）才算冲突，并给出一行摘要。
+5. 端口转发和分组（名称、父级、排序）写入同步文件。密码、口令、令牌不写。
+6. `updatedAt` 相同时，`updatedByDeviceId` 字典序更大的一边胜出。
+
+同步默认关闭。打开时用对话框写明：文件里的主机名和用户名是明文，秘密只留在本机钥匙串。
+
+密码存在钥匙串，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`，且 `synchronizable = false`。连接时发一个 60 秒、单次有效的令牌（环境变量 `MENUSH_ASKPASS_TOKEN`），并设置 `SSH_ASKPASS_REQUIRE=force`。没有这个令牌，或提示语不是密码，askpass 进程不读钥匙串。不记录密码。
+
+`ssh-copy-id` 只在用户确认后，于用户自己的终端里运行，不在后台执行。没有公钥时只展示 `ssh-keygen -t ed25519`，不代跑。
+
 ## 开放问题
 
-1. 同步文件夹是第一次启动就问，还是默认放到 iCloud Drive 的 `MenuSSH/`（未登录 iCloud 时再改问）？
-2. 墓碑保留多久？一直留着最安全，文件会随删除历史变长；按时间裁剪可能让一台长期离线的机器把站点复活。
-3. 回退是否写回终端偏好？本轮定为只影响当前会话。若改成写回，用户换回原终端后要自己再选一次。
-4. 自动合并是静默完成，还是给一行摘要（新增、覆盖、因墓碑丢弃各多少）？
-5. 分组继承和端口转发要不要进同步 schema。模型里已有 `parentID` 和 `portForwards`，UI 还没做全。同步文件若先省略，旧客户端会把它们抹掉。
-6. 两边 `updatedAt` 相等时用设备 id 打破平局，还是保留两边并让用户选？`HostGroup` 补 `updatedAt` 之前，分组只能整表按 id 对齐，重名分组算两条。
+没有未决的产品默认。真机上还要看：未登录 iCloud 时默认目录是否可写、ad-hoc 签名下钥匙串和 `SSH_ASKPASS` 是否稳定、macOS 是否自带 `ssh-copy-id`。

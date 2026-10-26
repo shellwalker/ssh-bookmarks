@@ -72,6 +72,8 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
     public var lastConnectedAt: Date?
     public var createdAt: Date
     public var updatedAt: Date
+    /// 最后改这条站点的设备。不参与认证，时间戳相同时用于打破平局。
+    public var updatedByDeviceId: String?
 
     public init(
         id: UUID = UUID(),
@@ -90,7 +92,8 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         notes: String = "",
         lastConnectedAt: Date? = nil,
         createdAt: Date = Date(),
-        updatedAt: Date = Date()
+        updatedAt: Date = Date(),
+        updatedByDeviceId: String? = nil
     ) {
         self.id = id
         self.label = label
@@ -109,11 +112,13 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         self.lastConnectedAt = lastConnectedAt
         self.createdAt = createdAt
         self.updatedAt = updatedAt
+        self.updatedByDeviceId = updatedByDeviceId
     }
 
     private enum CodingKeys: String, CodingKey {
         case id, label, hostname, port, username, groupID, tags, authMethod, identityFile
         case jumpHost, portForwards, extraOptions, isFavorite, notes, lastConnectedAt, createdAt, updatedAt
+        case updatedByDeviceId
     }
 
     /// 宽松解码：新增字段缺失时使用默认值，保证旧版本 JSON 可读。
@@ -136,6 +141,44 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         lastConnectedAt = try c.decodeIfPresent(Date.self, forKey: .lastConnectedAt)
         createdAt = try c.decodeIfPresent(Date.self, forKey: .createdAt) ?? Date()
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
+        updatedByDeviceId = try c.decodeIfPresent(String.self, forKey: .updatedByDeviceId)
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(label, forKey: .label)
+        try c.encode(hostname, forKey: .hostname)
+        try c.encodeIfPresent(port, forKey: .port)
+        try c.encode(username, forKey: .username)
+        try c.encodeIfPresent(groupID, forKey: .groupID)
+        try c.encode(tags, forKey: .tags)
+        try c.encode(authMethod, forKey: .authMethod)
+        try c.encodeIfPresent(identityFile, forKey: .identityFile)
+        try c.encodeIfPresent(jumpHost, forKey: .jumpHost)
+        try c.encode(portForwards, forKey: .portForwards)
+        try c.encode(extraOptions, forKey: .extraOptions)
+        try c.encode(isFavorite, forKey: .isFavorite)
+        try c.encode(notes, forKey: .notes)
+        try c.encodeIfPresent(lastConnectedAt, forKey: .lastConnectedAt)
+        try c.encode(createdAt, forKey: .createdAt)
+        try c.encode(updatedAt, forKey: .updatedAt)
+        try c.encodeIfPresent(updatedByDeviceId, forKey: .updatedByDeviceId)
+    }
+
+    /// 同步时算“内容变了”的字段。连接时间、创建时间、设备 id 不算。
+    public func hasSameSyncContent(as other: SSHHost) -> Bool {
+        var a = self
+        var b = other
+        a.lastConnectedAt = nil
+        b.lastConnectedAt = nil
+        a.createdAt = .distantPast
+        b.createdAt = .distantPast
+        a.updatedAt = .distantPast
+        b.updatedAt = .distantPast
+        a.updatedByDeviceId = nil
+        b.updatedByDeviceId = nil
+        return a == b
     }
 
     /// 列表中显示的副标题（Termius 风格 `user@host:port`），例如 `deploy@10.0.0.15:2201`。

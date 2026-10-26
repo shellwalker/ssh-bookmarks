@@ -45,6 +45,7 @@ struct TerminalLauncher {
     }
 
     /// 返回非 nil 表示首选终端没装，已经改用 `notice.used` 打开。不抛错，调用方做非阻塞提示。
+    /// 不修改用户保存的终端偏好。
     @discardableResult
     func launch(_ host: SSHHost) throws -> TerminalFallbackNotice? {
         let builder = SSHCommandBuilder(sshPath: sshPath, homeDirectory: NSHomeDirectory())
@@ -54,7 +55,22 @@ struct TerminalLauncher {
         } catch let error as SSHCommandError {
             throw TerminalLaunchError.invalidHost(error)
         }
+        let command: [String]
+        if host.authMethod == .password {
+            command = try AskpassLaunch.commandArgv(host: host, sshArguments: Array(argv.dropFirst()), sshPath: sshPath) ?? argv
+        } else {
+            command = argv
+        }
+        return try launchArgv(command)
+    }
 
+    /// 在用户的终端里输入一条命令（例如用户已确认的 ssh-copy-id）。不在本进程执行。
+    @discardableResult
+    func launchUserCommand(_ argv: [String]) throws -> TerminalFallbackNotice? {
+        try launchArgv(argv)
+    }
+
+    private func launchArgv(_ argv: [String]) throws -> TerminalFallbackNotice? {
         let installed = Set(TerminalApp.allCases.filter(Self.isInstalled))
         let resolution = TerminalFallback.resolve(preferred: terminal, installed: installed)
         let chosen = resolution.terminal

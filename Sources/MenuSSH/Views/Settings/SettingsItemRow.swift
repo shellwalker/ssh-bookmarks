@@ -22,6 +22,8 @@ struct SettingsItemRow: View {
         case .automationPermission: AutomationPermissionRow(showsDivider: showsDivider)
         case .importSSHConfig: ImportSSHConfigRow(showsDivider: showsDivider)
         case .dataFile: DataFileRow(showsDivider: showsDivider)
+        case .sync: SyncRow(showsDivider: showsDivider)
+        case .syncFolder: SyncFolderRow(showsDivider: showsDivider)
         case .version: VersionRow(showsDivider: showsDivider)
         case .sourceCode: SourceCodeRow(showsDivider: showsDivider)
         }
@@ -346,6 +348,87 @@ private struct DataFileRow: View {
         row(.dataFile, showsDivider: showsDivider) {
             Button("Show in Finder") { hosts.revealDataFileInFinder() }
         }
+    }
+}
+
+// MARK: - Sync
+
+private let syncPlaintextWarning = LocalizedStringKey(
+    """
+    The sync file stores hostnames and usernames in plaintext. \
+    Passwords and key passphrases stay in the Keychain on this Mac and are never written to the file.
+    """
+)
+
+@MainActor
+private struct SyncRow: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var hosts: HostStoreModel
+    @State private var showingWarning = false
+    let showsDivider: Bool
+
+    var body: some View {
+        row(.sync, subtitle: subtitle, showsDivider: showsDivider) {
+            SegmentedSetting(
+                selection: Binding(
+                    get: { OnOff(settings.syncEnabled) },
+                    set: { newValue in
+                        if newValue.isOn {
+                            if !settings.syncEnabled { showingWarning = true }
+                        } else {
+                            settings.syncEnabled = false
+                        }
+                    }
+                ),
+                options: OnOff.allCases
+            ) { $0.title }
+        }
+        .alert("Enable Sync?", isPresented: $showingWarning) {
+            Button("Enable") {
+                settings.syncEnabled = true
+                hosts.syncNow()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text(syncPlaintextWarning)
+        }
+    }
+
+    private var subtitle: Text {
+        if settings.syncEnabled {
+            return Text(syncPlaintextWarning)
+        }
+        return Text("Sync is off. Hosts stay on this Mac.")
+    }
+}
+
+@MainActor
+private struct SyncFolderRow: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var hosts: HostStoreModel
+    let showsDivider: Bool
+
+    var body: some View {
+        row(.syncFolder, subtitle: Text(verbatim: settings.resolvedSyncDirectory.path), showsDivider: showsDivider) {
+            HStack(spacing: 8) {
+                Button("Use iCloud Drive") {
+                    settings.syncFolderPath = nil
+                    if settings.syncEnabled { hosts.syncNow() }
+                }
+                Button("Choose Folder…") { chooseFolder() }
+            }
+        }
+    }
+
+    private func chooseFolder() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        panel.prompt = String(localized: "Choose")
+        guard panel.runModal() == .OK, let url = panel.url else { return }
+        settings.syncFolderPath = url.path
+        if settings.syncEnabled { hosts.syncNow() }
     }
 }
 
