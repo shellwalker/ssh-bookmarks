@@ -17,21 +17,24 @@ enum AutomationPermission {
     /// `AEDeterminePermissionToAutomateTarget` 在 ask = true 时会阻塞等待用户选择，所以放到后台线程执行。
     static func check(_ terminal: TerminalApp, ask: Bool) async -> Status {
         let bundleID = terminal.bundleIdentifier
-        let status: Int32 = await Task.detached(priority: .userInitiated) { () -> Int32 in
-            // `typeWildCard` is a DescType. The Swift overlay does not accept it as an
-            // AEEventClass / AEEventID, even though both are FourCharCodes. '****' is the wildcard.
+        // 询问用户时会阻塞，不能放在主线程。闭包本身是同步的，挂起点在 task.value。
+        let task = Task.detached(priority: .userInitiated) { () -> Int32 in
+            // `typeWildCard` 是 DescType。Swift 接口不接受把它传给 AEEventClass / AEEventID，
+            // 虽然它们都是 FourCharCode。'****' 就是这个通配符。
             let anyEventClass = AEEventClass(0x2A2A_2A2A)
             let anyEventID = AEEventID(0x2A2A_2A2A)
             var target = AEAddressDesc()
             defer { AEDisposeDesc(&target) }
             let bytes = Array(bundleID.utf8)
-            let created = bytes.withUnsafeBytes { raw -> OSStatus in
-                guard let base = raw.baseAddress else { return -600 }
-                return AECreateDesc(typeApplicationBundleID, base, raw.count, &target)
+            // AECreateDesc 在这个 SDK 里返回 OSErr（Int16），权限 API 返回 OSStatus（Int32）。
+            let created: OSStatus = bytes.withUnsafeBytes { raw in
+                guard let base = raw.baseAddress else { return OSStatus(-600) }
+                return OSStatus(AECreateDesc(typeApplicationBundleID, base, raw.count, &target))
             }
-            guard created == noErr else { return created }
+            guard created == 0 else { return created }
             return AEDeterminePermissionToAutomateTarget(&target, anyEventClass, anyEventID, ask)
-        }.value
+        }
+        let status = await task.value
         switch status {
         case 0: return .granted  // noErr
         case -1743: return .denied  // errAEEventNotPermitted

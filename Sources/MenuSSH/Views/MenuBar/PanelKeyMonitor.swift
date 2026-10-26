@@ -1,4 +1,4 @@
-import AppKit
+@preconcurrency import AppKit
 import MenuSSHCore
 import SwiftUI
 
@@ -34,10 +34,12 @@ final class PanelKeyMonitor: ObservableObject {
             // 本地监视器在安装它的线程（主线程）上回调。assumeIsolated 把回调标回 MainActor，
             // 这样可以在 field editor 之前处理方向键，同时满足 Swift 6 工具链的隔离检查。
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                MainActor.assumeIsolated { () -> NSEvent? in
-                    guard let self else { return event }
-                    return self.process(event) ? nil : event
+                // 只把“是否吃掉”传出隔离域。NSEvent 的 Sendable 一致性在 SDK 里被标成不可用。
+                let handled = MainActor.assumeIsolated { () -> Bool in
+                    guard let self else { return false }
+                    return self.process(event)
                 }
+                return handled ? nil : event
             }
         }
         // 第一次弹出时窗口在挂上之前就已是 key window，不会收到通知；那一次由视图的 onAppear 负责初始化。
