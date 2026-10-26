@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- 不启用 App Sandbox：需要读取 ~/.ssh、执行 /usr/bin/ssh、向任意终端发送 Apple Events。 -->
+	<!-- Hardened Runtime 下发送 Apple Events 必需此项（配合 Info.plist 的 NSAppleEventsUsageDescription）。 -->
+	<key>com.apple.security.automation.apple-events</key>
+	<true/>
+</dict>
+</plist>

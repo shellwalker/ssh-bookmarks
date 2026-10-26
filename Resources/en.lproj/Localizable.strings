@@ -1,0 +1,3 @@
+/* MenuSSH English. Keys are the English source strings, so this file only needs entries that differ. */
+
+"Imported %lld hosts" = "Imported %lld hosts";
