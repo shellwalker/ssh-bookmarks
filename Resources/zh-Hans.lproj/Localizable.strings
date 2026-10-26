@@ -101,3 +101,54 @@
 "Username" = "用户名";
 "Version" = "版本";
 "\"Follow Window\" shows the Dock icon only while a window is open" = "“跟随窗口”仅在有窗口打开时显示 Dock 图标";
+
+/* M1：站点管理 / 菜单栏面板 */
+" copy" = " 副本";
+"A group named “%@” already exists." = "已存在名为“%@”的分组。";
+"Cannot Save Group" = "无法保存分组";
+"Clear" = "清除";
+"Delete Group…" = "删除分组…";
+"Delete this group?" = "删除这个分组？";
+"Delete this host?" = "删除这个站点？";
+"Delete…" = "删除…";
+"Duplicate" = "复制站点";
+"Group name cannot be empty." = "分组名称不能为空。";
+"Host is required." = "请填写主机。";
+"Host may only contain ASCII letters, digits and . - _ : %. Use punycode (xn--) for international domains." = "主机只能包含 ASCII 字母、数字和 . - _ : %，国际化域名请使用 punycode（xn--）。";
+"Hosts in “%@” will be moved to Ungrouped." = "“%@”中的站点将移到“未分组”。";
+"Invalid port forward." = "端口转发配置无效。";
+"Jump host must look like user@host:port (comma-separated for multiple hops)." = "跳板机格式应为 user@host:port（多跳用逗号分隔）。";
+"Key file path cannot start with - or contain control characters." = "私钥路径不能以 - 开头，也不能包含控制字符。";
+"Move to Group" = "移到分组";
+"OK" = "好";
+"Port must be 1–65535." = "端口必须在 1–65535 之间。";
+"Port must be a number." = "端口必须是数字。";
+"Rename" = "重命名";
+"Rename Group" = "重命名分组";
+"Rename…" = "重命名…";
+"SSH executable must be an absolute path." = "SSH 路径必须是绝对路径。";
+"SSH option %@ is not allowed or has an invalid value." = "不允许使用 SSH 选项 %@，或其值无效。";
+"Username may only contain ASCII letters, digits and . _ - @, and cannot start with -." = "用户名只能包含 ASCII 字母、数字和 . _ - @，且不能以 - 开头。";
+"“%@” and its saved password will be removed." = "将删除“%@”及其保存的密码。";
+
+/* M2：设置 */
+"Search Settings" = "查找设置";
+"Search Results" = "搜索结果";
+"No matching settings" = "没有匹配的设置";
+"Show in its category" = "在所属分类中显示";
+"Settings…" = "设置…";
+"Restart Now" = "立即重启";
+"Open Login Items" = "打开登录项";
+"Move MenuSSH to the Applications folder to enable this" = "将 MenuSSH 移到“应用程序”文件夹后才能开启";
+"Close Panel After Connecting" = "连接后关闭面板";
+"Hide the menu bar panel once a session opens" = "会话打开后自动收起菜单栏面板";
+"%@ is not installed; sessions will fail to open." = "未安装 %@，会话将无法打开。";
+"Ghostty %@ has no AppleScript support; each session opens in a new window. Update to 1.3 or later for tabs." = "Ghostty %@ 不支持 AppleScript，每个会话都会在新窗口打开；升级到 1.3 或更高版本可使用标签页。";
+"Not an executable file; using it will fail" = "不是可执行文件，连接将会失败";
+"Reset" = "恢复默认";
+"Check" = "检查";
+"Allowed to control %@." = "已允许控制 %@。";
+"Not allowed to control %@. Enable MenuSSH under Privacy & Security › Automation." = "没有控制 %@ 的权限，请在 隐私与安全性 › 自动化 中允许 MenuSSH。";
+"macOS will ask for permission the first time a session opens in %@." = "首次在 %@ 中打开会话时，macOS 会请求授权。";
+"Open %@ and click Check to see the permission state." = "请先打开 %@，再点“检查”查看授权状态。";
+"Permission state unknown (%lld)." = "授权状态未知（%lld）。";
