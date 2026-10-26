@@ -1,0 +1,107 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Release (macOS 14, arm64)
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      # secrets 不能直接用在 step 的 if 中，这里转成布尔标记；未配置时自动走 ad-hoc 签名、跳过公证。
+      HAS_SIGNING_CERT: ${{ secrets.MACOS_CERT_P12_BASE64 != '' && secrets.MACOS_SIGN_IDENTITY != '' }}
+      HAS_NOTARY: ${{ secrets.APPLE_ID != '' && secrets.APPLE_TEAM_ID != '' && secrets.APPLE_APP_PASSWORD != '' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Ensure tag is on main
+        run: |
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+            echo "::error::Tag $GITHUB_REF_NAME ($GITHUB_SHA) is not on main. Release tags must be created from main."
+            exit 1
+          fi
+
+      - name: Select Xcode
+        run: |
+          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode_16*.app' | sort -V | tail -n 1)"
+          if [[ -n "$XCODE" ]]; then
+            sudo xcode-select -s "$XCODE"
+          fi
+          xcodebuild -version
+
+      - name: Test
+        run: swift test
+
+      - name: Import signing certificate
+        if: env.HAS_SIGNING_CERT == 'true'
+        env:
+          MACOS_CERT_P12_BASE64: ${{ secrets.MACOS_CERT_P12_BASE64 }}
+          MACOS_CERT_PASSWORD: ${{ secrets.MACOS_CERT_PASSWORD }}
+        run: |
+          KEYCHAIN="$RUNNER_TEMP/signing.keychain-db"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT="$RUNNER_TEMP/cert.p12"
+          echo "$MACOS_CERT_P12_BASE64" | base64 --decode > "$CERT"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN"
+          security import "$CERT" -P "$MACOS_CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN"
+          security set-key-partition-list -S apple-tool:,apple: -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN" > /dev/null
+          EXISTING=()
+          while IFS= read -r kc; do EXISTING+=("$kc"); done < <(security list-keychains -d user | tr -d '" ')
+          security list-keychains -d user -s "$KEYCHAIN" "${EXISTING[@]}"
+          rm -f "$CERT"
+
+      - name: Build app
+        env:
+          ARCH: arm64
+          SIGN_IDENTITY: ${{ env.HAS_SIGNING_CERT == 'true' && secrets.MACOS_SIGN_IDENTITY || '' }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}" Scripts/build_app.sh
+
+      - name: Package
+        env:
+          ARCH: arm64
+          MAKE_DMG: "1"
+        run: Scripts/package.sh
+
+      - name: Notarize
+        if: env.HAS_SIGNING_CERT == 'true' && env.HAS_NOTARY == 'true'
+        env:
+          ARCH: arm64
+          MAKE_DMG: "1"
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_APP_PASSWORD: ${{ secrets.APPLE_APP_PASSWORD }}
+        run: Scripts/notarize.sh
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FLAGS=(--generate-notes --verify-tag --title "MenuSSH $GITHUB_REF_NAME")
+          if [[ "$GITHUB_REF_NAME" == *-* ]]; then
+            FLAGS+=(--prerelease)
+          fi
+          if [[ "$HAS_SIGNING_CERT" != "true" ]]; then
+            FLAGS+=(--notes "未签名构建（ad-hoc）：首次打开请右键 › 打开，或执行 xattr -dr com.apple.quarantine /Applications/MenuSSH.app")
+          fi
+          gh release create "$GITHUB_REF_NAME" dist/* "${FLAGS[@]}"
+
+      - name: Clean up keychain
+        if: always() && env.HAS_SIGNING_CERT == 'true'
+        run: security delete-keychain "$RUNNER_TEMP/signing.keychain-db" || true

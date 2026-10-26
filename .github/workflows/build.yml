@@ -1,0 +1,66 @@
+name: Build
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & test (macOS 14, arm64)
+    runs-on: macos-14
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: |
+          # macos-14 镜像默认 Xcode 15.4；有 Xcode 16 时优先使用（Swift 6 工具链，仍以 Swift 5 语言模式编译）。
+          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode_16*.app' | sort -V | tail -n 1)"
+          if [[ -n "$XCODE" ]]; then
+            sudo xcode-select -s "$XCODE"
+          fi
+          xcodebuild -version
+          swift --version
+          uname -m
+
+      - name: Lint (swift-format)
+        run: |
+          if xcrun --find swift-format > /dev/null 2>&1; then
+            xcrun swift-format lint --recursive Sources Tests Package.swift
+          else
+            echo "swift-format not available in this Xcode, skipping"
+          fi
+
+      - name: Test
+        run: swift test
+
+      - name: Build app
+        env:
+          ARCH: arm64
+        run: Scripts/build_app.sh
+
+      - name: Package
+        env:
+          ARCH: arm64
+        run: Scripts/package.sh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MenuSSH-${{ github.sha }}-arm64
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
