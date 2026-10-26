@@ -27,20 +27,33 @@ public enum ShellQuoting {
 
 /// AppleScript 字符串字面量转义。
 public enum AppleScriptQuoting {
-    /// 返回带双引号的 AppleScript 字符串字面量。只转义 `\` 和 `"`；
-    /// 调用方必须保证内容不含换行等控制字符（SSHCommandBuilder 已做校验）。
+    /// 返回带双引号的 AppleScript 字符串字面量：转义 `\` 和 `"`。
+    /// 防御性地把换行、回车、制表符写成 `\n` `\r` `\t`（SSHCommandBuilder 本身已拒绝控制字符）。
     public static func stringLiteral(_ value: String) -> String {
-        let escaped =
-            value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"" + escaped + "\""
+        var out = "\""
+        for scalar in value.unicodeScalars {
+            switch scalar {
+            case "\\": out += "\\\\"
+            case "\"": out += "\\\""
+            case "\n": out += "\\n"
+            case "\r": out += "\\r"
+            case "\t": out += "\\t"
+            default: out.unicodeScalars.append(scalar)
+            }
+        }
+        return out + "\""
     }
 }
 
 extension String {
-    /// 是否包含控制字符（换行、制表符、NUL、ESC 等）。
-    var containsControlCharacters: Bool {
-        unicodeScalars.contains { CharacterSet.controlCharacters.contains($0) }
+    /// 是否包含控制字符或格式字符（换行、制表符、NUL、ESC、零宽字符、双向覆盖 U+202E、U+2028 行分隔符等）。
+    /// 按 Unicode 通用类别判断，避免不同平台 CharacterSet 定义不一致。
+    public var containsControlCharacters: Bool {
+        unicodeScalars.contains { scalar in
+            switch scalar.properties.generalCategory {
+            case .control, .format, .lineSeparator, .paragraphSeparator: return true
+            default: return false
+            }
+        }
     }
 }
