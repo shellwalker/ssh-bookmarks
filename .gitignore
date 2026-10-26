@@ -1,0 +1,28 @@
+# SwiftPM / Xcode
+.build/
+.swiftpm/
+/Packages/
+DerivedData/
+*.xcodeproj/
+*.xcworkspace/
+xcuserdata/
+
+# 打包产物
+/build/
+/dist/
+*.dmg
+*.zip
+
+# 签名材料，绝不提交
+*.p12
+*.cer
+*.mobileprovision
+*.provisionprofile
+.env
+.env.*
+
+# macOS
+.DS_Store
+
+# 参考代码（不入库）
+ref/iTermGUI/
