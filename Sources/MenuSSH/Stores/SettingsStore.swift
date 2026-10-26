@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import MenuSSHCore
 
 /// 应用设置，持久化到 UserDefaults。密码等敏感信息不在这里。

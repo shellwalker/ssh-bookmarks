@@ -19,6 +19,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 @MainActor
 enum AppActivation {
     static func bringToFront() {
-        NSApp.activate(ignoringOtherApps: true)
+        NSApp.activate()
     }
 }

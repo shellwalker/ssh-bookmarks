@@ -10,8 +10,17 @@ enum WindowID {
 @MainActor
 struct MenuSSHApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var hostStore = HostStoreModel.shared
-    @StateObject private var settings = SettingsStore.shared
+    /// `openWindow` is delivered to the App, not to views built inside `.commands`.
+    @Environment(\.openWindow) private var openWindow
+    @StateObject private var hostStore: HostStoreModel
+    @StateObject private var settings: SettingsStore
+
+    init() {
+        // The same singletons AppDelegate uses. Initializing the wrapper here keeps
+        // the lookup on the main actor; a default-value expression is nonisolated.
+        _hostStore = StateObject(wrappedValue: HostStoreModel.shared)
+        _settings = StateObject(wrappedValue: SettingsStore.shared)
+    }
 
     var body: some Scene {
         // 第一个 Scene 是菜单栏常驻面板（window 风格，可放搜索框和列表）。
@@ -42,23 +51,14 @@ struct MenuSSHApp: App {
         .defaultSize(width: 860, height: 560)
         .commands {
             // 替换系统的“设置…”菜单项（⌘,），打开我们自己的 Window scene。
+            // openWindow 挂在 App 上：嵌在 commands 里的子 View 拿不到这个 environment。
             CommandGroup(replacing: .appSettings) {
-                SettingsCommandButton()
+                Button("Settings…") {
+                    openWindow(id: WindowID.settings)
+                    AppActivation.bringToFront()
+                }
+                .keyboardShortcut(",", modifiers: .command)
             }
         }
-    }
-}
-
-/// Commands 里不能直接读 @Environment，包一层 View 拿 openWindow。
-@MainActor
-private struct SettingsCommandButton: View {
-    @Environment(\.openWindow) private var openWindow
-
-    var body: some View {
-        Button("Settings…") {
-            openWindow(id: WindowID.settings)
-            AppActivation.bringToFront()
-        }
-        .keyboardShortcut(",", modifiers: .command)
     }
 }

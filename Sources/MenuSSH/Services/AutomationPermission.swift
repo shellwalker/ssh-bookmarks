@@ -18,9 +18,19 @@ enum AutomationPermission {
     static func check(_ terminal: TerminalApp, ask: Bool) async -> Status {
         let bundleID = terminal.bundleIdentifier
         let status: Int32 = await Task.detached(priority: .userInitiated) { () -> Int32 in
-            let target = NSAppleEventDescriptor(bundleIdentifier: bundleID)
-            guard let desc = target.aeDesc else { return -600 }
-            return AEDeterminePermissionToAutomateTarget(desc, AEEventClass(typeWildCard), AEEventID(typeWildCard), ask)
+            // `typeWildCard` is a DescType. The Swift overlay does not accept it as an
+            // AEEventClass / AEEventID, even though both are FourCharCodes. '****' is the wildcard.
+            let anyEventClass = AEEventClass(0x2A2A_2A2A)
+            let anyEventID = AEEventID(0x2A2A_2A2A)
+            var target = AEAddressDesc()
+            defer { AEDisposeDesc(&target) }
+            let bytes = Array(bundleID.utf8)
+            let created = bytes.withUnsafeBytes { raw -> OSStatus in
+                guard let base = raw.baseAddress else { return -600 }
+                return AECreateDesc(typeApplicationBundleID, base, raw.count, &target)
+            }
+            guard created == noErr else { return created }
+            return AEDeterminePermissionToAutomateTarget(&target, anyEventClass, anyEventID, ask)
         }.value
         switch status {
         case 0: return .granted  // noErr

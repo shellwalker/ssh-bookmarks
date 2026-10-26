@@ -169,7 +169,9 @@ struct MenuBarContentView: View {
     private func focusSearchField() {
         // 窗口刚成为 key window 时立即设置焦点可能被 SwiftUI 覆盖，推迟到下一轮 runloop。
         DispatchQueue.main.async {
-            MainActor.assumeIsolated { searchFocused = true }
+            MainActor.assumeIsolated {
+                searchFocused = true
+            }
         }
     }
 
@@ -178,7 +180,7 @@ struct MenuBarContentView: View {
         case .none:
             // 列表为空时 Return 也吞掉，避免系统提示音；其它键交还给文本框。
             return key == .enter
-        case .select:
+        case .select(_):
             return true
         case .connect(let host):
             connect(host)

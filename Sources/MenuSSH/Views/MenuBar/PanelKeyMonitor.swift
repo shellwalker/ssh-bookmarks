@@ -25,13 +25,19 @@ final class PanelKeyMonitor: ObservableObject {
         becomeKeyObserver = NotificationCenter.default.addObserver(
             forName: NSWindow.didBecomeKeyNotification, object: window, queue: .main
         ) { [weak self] _ in
-            MainActor.assumeIsolated { () -> Void in self?.onOpen?() }
+            MainActor.assumeIsolated {
+                self?.onOpen?()
+            }
         }
 
         if monitor == nil {
+            // 本地监视器在安装它的线程（主线程）上回调。assumeIsolated 把回调标回 MainActor，
+            // 这样可以在 field editor 之前处理方向键，同时满足 Swift 6 工具链的隔离检查。
             monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
-                let handled = MainActor.assumeIsolated { self?.process(event) ?? false }
-                return handled ? nil : event
+                MainActor.assumeIsolated { () -> NSEvent? in
+                    guard let self else { return event }
+                    return self.process(event) ? nil : event
+                }
             }
         }
         // 第一次弹出时窗口在挂上之前就已是 key window，不会收到通知；那一次由视图的 onAppear 负责初始化。
@@ -48,9 +54,11 @@ final class PanelKeyMonitor: ObservableObject {
     /// 关闭面板。先用 SwiftUI 的 dismiss，若窗口仍在（MenuBarExtra 在部分系统上不响应 dismiss）再直接关窗。
     func close(using dismiss: DismissAction) {
         dismiss()
+        // MenuBarExtra 在部分系统上不响应 SwiftUI dismiss，下一轮 runloop 再直接隐藏面板。
         DispatchQueue.main.async { [weak self] in
             MainActor.assumeIsolated {
-                if let window = self?.window, window.isVisible { window.orderOut(nil) }
+                guard let window = self?.window, window.isVisible else { return }
+                window.orderOut(nil)
             }
         }
     }
@@ -85,7 +93,10 @@ struct WindowReader: NSViewRepresentable {
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
-            onWindow?(window)
+            // NSView 在新 SDK 里是 MainActor；旧 SDK 里这个方法不是。两种情况下都在主线程调用。
+            MainActor.assumeIsolated {
+                self.onWindow?(self.window)
+            }
         }
     }
 }

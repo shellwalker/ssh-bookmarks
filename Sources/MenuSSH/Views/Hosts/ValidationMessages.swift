@@ -8,22 +8,22 @@ extension SSHCommandError {
         switch self {
         case .emptyHostname:
             return String(localized: "Host is required.")
-        case .invalidHostname:
+        case .invalidHostname(_):
             return String(
                 localized: "Host may only contain ASCII letters, digits and . - _ : %. Use punycode (xn--) for international domains.")
-        case .invalidUsername:
+        case .invalidUsername(_):
             return String(localized: "Username may only contain ASCII letters, digits and . _ - @, and cannot start with -.")
-        case .invalidPort:
+        case .invalidPort(_):
             return String(localized: "Port must be 1–65535.")
-        case .invalidIdentityFile:
+        case .invalidIdentityFile(_):
             return String(localized: "Key file path cannot start with - or contain control characters.")
-        case .invalidJumpHost:
+        case .invalidJumpHost(_):
             return String(localized: "Jump host must look like user@host:port (comma-separated for multiple hops).")
         case .invalidOption(let key):
-            return String(localized: "SSH option \(key) is not allowed or has an invalid value.")
-        case .invalidPortForward:
+            return L10n.format("SSH option %@ is not allowed or has an invalid value.", key)
+        case .invalidPortForward(_):
             return String(localized: "Invalid port forward.")
-        case .invalidSSHPath:
+        case .invalidSSHPath(_):
             return String(localized: "SSH executable must be an absolute path.")
         }
     }

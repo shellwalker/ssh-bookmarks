@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import MenuSSHCore
 
 /// 站点数据的 UI 状态层：包装 HostFileStore，提供增删改查、搜索与连接。
@@ -27,7 +28,7 @@ final class HostStoreModel: ObservableObject {
         do {
             library = try fileStore.load()
         } catch {
-            lastError = String(localized: "Failed to read hosts file: \(error.localizedDescription)")
+            lastError = L10n.format("Failed to read hosts file: %@", error.localizedDescription)
         }
     }
 
@@ -35,7 +36,7 @@ final class HostStoreModel: ObservableObject {
         do {
             try fileStore.save(library)
         } catch {
-            lastError = String(localized: "Failed to save hosts file: \(error.localizedDescription)")
+            lastError = L10n.format("Failed to save hosts file: %@", error.localizedDescription)
         }
     }
 
@@ -102,7 +103,7 @@ final class HostStoreModel: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .empty: return String(localized: "Group name cannot be empty.")
-            case .duplicate(let name): return String(localized: "A group named “\(name)” already exists.")
+            case .duplicate(let name): return L10n.format("A group named “%@” already exists.", name)
             }
         }
     }
@@ -137,7 +138,7 @@ final class HostStoreModel: ObservableObject {
     @discardableResult
     func importSSHConfig(from url: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh/config")) -> Int {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-            lastError = String(localized: "Cannot read \(url.path)")
+            lastError = L10n.format("Cannot read %@", url.path)
             return 0
         }
         let existing = Set(library.hosts.map { $0.hostname.lowercased() })

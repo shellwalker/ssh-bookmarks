@@ -16,6 +16,7 @@ struct HostManagerView: View {
     @State private var groupNameDraft = ""
     @State private var showingNewGroup = false
     @State private var renamingGroup: HostGroup?
+    @State private var showingRenameGroup = false
     @State private var groupError: String?
 
     @State private var hostPendingDeletion: SSHHost?
@@ -55,14 +56,18 @@ struct HostManagerView: View {
             Button("Create") { commitGroupName(nil) }
             Button("Cancel", role: .cancel) { groupNameDraft = "" }
         }
-        .alert(
-            "Rename Group",
-            isPresented: Binding(get: { renamingGroup != nil }, set: { if !$0 { renamingGroup = nil } }),
-            presenting: renamingGroup
-        ) { group in
+        // TextField 只能放在 isPresented 版本的 alert 里；presenting 版本在 macOS 上不接受文本框。
+        // 分组对象单独保存，按钮触发时仍能拿到被重命名的那一项。
+        .alert("Rename Group", isPresented: $showingRenameGroup) {
             TextField("Name", text: $groupNameDraft)
-            Button("Rename") { commitGroupName(group) }
-            Button("Cancel", role: .cancel) { groupNameDraft = "" }
+            Button("Rename") {
+                if let group = renamingGroup { commitGroupName(group) }
+                renamingGroup = nil
+            }
+            Button("Cancel", role: .cancel) {
+                groupNameDraft = ""
+                renamingGroup = nil
+            }
         }
         .alert(
             "Cannot Save Group",
@@ -83,7 +88,7 @@ struct HostManagerView: View {
                 if selection == host.id { selection = nil }
             }
         } message: { host in
-            Text("“\(host.label)” and its saved password will be removed.")
+            Text(verbatim: L10n.format("“%@” and its saved password will be removed.", host.label))
         }
         .confirmationDialog(
             "Delete this group?",
@@ -96,7 +101,7 @@ struct HostManagerView: View {
                 if filter == .group(group.id) { filter = .all }
             }
         } message: { group in
-            Text("Hosts in “\(group.name)” will be moved to Ungrouped.")
+            Text(verbatim: L10n.format("Hosts in “%@” will be moved to Ungrouped.", group.name))
         }
         .onAppear { AppActivation.bringToFront() }
     }
@@ -146,6 +151,7 @@ struct HostManagerView: View {
                         Button("Rename…") {
                             groupNameDraft = group.name
                             renamingGroup = group
+                            showingRenameGroup = true
                         }
                         Button("Delete Group…", role: .destructive) { groupPendingDeletion = group }
                     }

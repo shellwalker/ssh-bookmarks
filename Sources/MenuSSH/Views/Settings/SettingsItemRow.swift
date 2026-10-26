@@ -194,7 +194,7 @@ private struct SessionTerminalRow: View {
     private func pickerLabel(_ app: TerminalApp) -> Text {
         let state = info[app] ?? TerminalInstallInfo(installed: true, version: nil)
         if !state.installed {
-            return Text("\(app.localizedName) (not installed)")
+            return Text(verbatim: L10n.format("%@ (not installed)", app.localizedName))
         }
         if let version = state.version, app != .terminal {
             return Text(verbatim: "\(app.localizedName) \(version)")
@@ -206,13 +206,16 @@ private struct SessionTerminalRow: View {
         let selected = settings.terminal
         guard let state = info[selected] else { return nil }
         if !state.installed {
-            return Text("\(selected.localizedName) is not installed; sessions will fail to open.").foregroundColor(.orange)
+            return Text(verbatim: L10n.format("%@ is not installed; sessions will fail to open.", selected.localizedName))
+                .foregroundColor(.orange)
         }
         if selected == .ghostty, let version = state.version,
             version.compare(TerminalLaunchPlanner.ghosttyAppleScriptMinimumVersion, options: .numeric) == .orderedAscending
         {
             return Text(
-                "Ghostty \(version) has no AppleScript support; each session opens in a new window. Update to 1.3 or later for tabs.")
+                verbatim: L10n.format(
+                    "Ghostty %@ has no AppleScript support; each session opens in a new window. Update to 1.3 or later for tabs.",
+                    version))
         }
         return nil
     }
@@ -302,15 +305,16 @@ private struct AutomationPermissionRow: View {
         case .none:
             return nil
         case .granted?:
-            return Text("Allowed to control \(name).").foregroundColor(.green)
+            return Text(verbatim: L10n.format("Allowed to control %@.", name)).foregroundColor(.green)
         case .denied?:
-            return Text("Not allowed to control \(name). Enable MenuSSH under Privacy & Security › Automation.").foregroundColor(.red)
+            return Text(verbatim: L10n.format("Not allowed to control %@. Enable MenuSSH under Privacy & Security › Automation.", name))
+                .foregroundColor(.red)
         case .notDetermined?:
-            return Text("macOS will ask for permission the first time a session opens in \(name).")
+            return Text(verbatim: L10n.format("macOS will ask for permission the first time a session opens in %@.", name))
         case .targetNotRunning?:
-            return Text("Open \(name) and click Check to see the permission state.")
+            return Text(verbatim: L10n.format("Open %@ and click Check to see the permission state.", name))
         case .unknown(let code)?:
-            return Text("Permission state unknown (\(Int(code))).")
+            return Text(verbatim: L10n.format("Permission state unknown (%lld).", Int64(code)))
         }
     }
 }
@@ -327,7 +331,7 @@ private struct ImportSSHConfigRow: View {
         row(.importSSHConfig, subtitle: message, showsDivider: showsDivider) {
             Button("Import") {
                 let count = hosts.importSSHConfig()
-                message = Text("Imported \(count) hosts")
+                message = Text(verbatim: L10n.format("Imported %lld hosts", Int64(count)))
             }
         }
     }

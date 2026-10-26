@@ -159,7 +159,7 @@ struct HostEditorView: View {
             do {
                 try keychain.set(password, account: KeychainService.account(hostID: host.id, kind: .password))
             } catch {
-                fail(String(localized: "Keychain error: \(error.localizedDescription)"), field: nil)
+                fail(L10n.format("Keychain error: %@", error.localizedDescription), field: nil)
                 return
             }
         }

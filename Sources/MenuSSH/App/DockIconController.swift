@@ -40,11 +40,11 @@ final class DockIconController {
     func update() {
         let show = mode.showsDockIcon(hasVisibleWindow: hasVisibleAppWindow)
         let policy: NSApplication.ActivationPolicy = show ? .regular : .accessory
-        guard NSApp.activationPolicy() != policy else { return }
+        guard NSApp.activationPolicy != policy else { return }
         // 先记下当前可见窗口：切换 activation policy 时系统可能把应用移到后台，
         // 设置窗口会“消失”在其他应用后面，下一轮 runloop 再把它们带回前台（无需重启）。
         let visibleWindows = appWindows.filter(\.isVisible)
-        NSApp.setActivationPolicy(policy)
+        guard NSApp.setActivationPolicy(policy) else { return }
         guard !visibleWindows.isEmpty || show else { return }
         DispatchQueue.main.async {
             MainActor.assumeIsolated {

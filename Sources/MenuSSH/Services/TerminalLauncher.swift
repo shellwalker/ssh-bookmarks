@@ -13,11 +13,11 @@ enum TerminalLaunchError: LocalizedError {
         case .invalidHost(let e):
             return e.message
         case .terminalNotInstalled(let t):
-            return String(localized: "\(t.displayName) is not installed.")
+            return L10n.format("%@ is not installed.", t.displayName)
         case .automationDenied(let t):
-            return String(
-                localized:
-                    "MenuSSH is not allowed to control \(t.displayName). Enable it in System Settings › Privacy & Security › Automation.")
+            return L10n.format(
+                "MenuSSH is not allowed to control %@. Enable it in System Settings › Privacy & Security › Automation.",
+                t.displayName)
         case .appleScript(let message):
             return message
         case .process(let message):
