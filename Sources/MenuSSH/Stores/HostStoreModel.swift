@@ -9,6 +9,8 @@ final class HostStoreModel: ObservableObject {
 
     @Published private(set) var library: HostLibrary = .empty
     @Published var lastError: String?
+    /// 回退到别的终端时的说明。不是错误，连接已经发出。
+    @Published var lastNotice: String?
 
     let fileStore: HostFileStore
     private let keychain = KeychainService()
@@ -154,14 +156,24 @@ final class HostStoreModel: ObservableObject {
     func connect(_ host: SSHHost, settings: SettingsStore) {
         let launcher = TerminalLauncher(sshPath: settings.sshPath, terminal: settings.terminal, openMode: settings.openMode)
         do {
-            try launcher.launch(host)
+            let notice = try launcher.launch(host)
             lastError = nil
+            if let notice {
+                lastNotice = L10n.format(
+                    "%@ is not installed. Opened this session in %@ instead.",
+                    notice.missing.displayName,
+                    notice.used.displayName
+                )
+            } else {
+                lastNotice = nil
+            }
             var h = host
             h.lastConnectedAt = Date()
             library.upsert(h)
             persist()
         } catch {
             lastError = error.localizedDescription
+            lastNotice = nil
         }
     }
 }

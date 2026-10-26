@@ -7,6 +7,7 @@ import SwiftUI
 struct HostManagerView: View {
     @EnvironmentObject private var hosts: HostStoreModel
     @EnvironmentObject private var settings: SettingsStore
+    @Environment(\.openWindow) private var openWindow
     @State private var filter: HostFilter? = .all
     @State private var query = ""
     @State private var selection: UUID?
@@ -42,6 +43,13 @@ struct HostManagerView: View {
                     hosts.importSSHConfig()
                 } label: {
                     Label("Import ~/.ssh/config", systemImage: "square.and.arrow.down")
+                }
+                Button {
+                    settings.pendingSettingsPane = nil
+                    openWindow(id: WindowID.settings)
+                    AppActivation.bringToFront()
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
                 }
             }
         }
@@ -182,9 +190,11 @@ struct HostManagerView: View {
             } label: {
                 Label("New Group", systemImage: "folder.badge.plus")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
+            .background(.bar)
         }
     }
 
@@ -226,6 +236,17 @@ struct HostManagerView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                         .background(.bar)
+                } else if let notice = hosts.lastNotice {
+                    Label {
+                        Text(verbatim: notice)
+                    } icon: {
+                        Image(systemName: "info.circle")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(.bar)
                 }
             }
         }

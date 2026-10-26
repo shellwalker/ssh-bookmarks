@@ -50,14 +50,27 @@ struct MenuSSHApp: App {
         }
         .defaultSize(width: 860, height: 560)
         .commands {
-            // 替换系统的“设置…”菜单项（⌘,），打开我们自己的 Window scene。
             // openWindow 挂在 App 上：嵌在 commands 里的子 View 拿不到这个 environment。
+            CommandGroup(replacing: .appInfo) {
+                Button("About MenuSSH") {
+                    settings.pendingSettingsPane = .about
+                    openWindow(id: WindowID.settings)
+                    AppActivation.bringToFront()
+                }
+            }
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") {
+                    settings.pendingSettingsPane = nil
                     openWindow(id: WindowID.settings)
                     AppActivation.bringToFront()
                 }
                 .keyboardShortcut(",", modifiers: .command)
+            }
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit MenuSSH") {
+                    NSApp.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
             }
         }
     }

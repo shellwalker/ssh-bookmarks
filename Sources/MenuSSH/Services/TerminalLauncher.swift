@@ -44,7 +44,9 @@ struct TerminalLauncher {
         return bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
     }
 
-    func launch(_ host: SSHHost) throws {
+    /// 返回非 nil 表示首选终端没装，已经改用 `notice.used` 打开。不抛错，调用方做非阻塞提示。
+    @discardableResult
+    func launch(_ host: SSHHost) throws -> TerminalFallbackNotice? {
         let builder = SSHCommandBuilder(sshPath: sshPath, homeDirectory: NSHomeDirectory())
         let argv: [String]
         do {
@@ -53,18 +55,20 @@ struct TerminalLauncher {
             throw TerminalLaunchError.invalidHost(error)
         }
 
-        guard Self.isInstalled(terminal) else { throw TerminalLaunchError.terminalNotInstalled(terminal) }
-
+        let installed = Set(TerminalApp.allCases.filter(Self.isInstalled))
+        let resolution = TerminalFallback.resolve(preferred: terminal, installed: installed)
+        let chosen = resolution.terminal
         let plan = TerminalLaunchPlanner.plan(
-            terminal: terminal,
+            terminal: chosen,
             argv: argv,
             mode: openMode,
-            ghosttyVersion: terminal == .ghostty ? Self.installedVersion(of: .ghostty) : nil
+            ghosttyVersion: chosen == .ghostty ? Self.installedVersion(of: .ghostty) : nil
         )
-        try execute(plan)
+        try execute(plan, terminal: chosen)
+        return resolution.notice
     }
 
-    private func execute(_ plan: TerminalLaunchPlan) throws {
+    private func execute(_ plan: TerminalLaunchPlan, terminal: TerminalApp) throws {
         switch plan {
         case .appleScript(let source):
             // TODO(M1)：NSAppleScript 是同步调用，首次授权弹窗期间会阻塞主线程；

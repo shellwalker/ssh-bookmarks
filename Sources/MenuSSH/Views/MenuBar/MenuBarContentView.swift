@@ -34,12 +34,10 @@ struct MenuBarContentView: View {
 
             if let error = hosts.lastError {
                 Divider()
-                Text(verbatim: error)
-                    .font(.system(size: 11))
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
+                statusLine(error, color: .red, symbol: "exclamationmark.triangle.fill")
+            } else if let notice = hosts.lastNotice {
+                Divider()
+                statusLine(notice, color: .orange, symbol: "info.circle")
             }
 
             Divider()
@@ -132,29 +130,52 @@ struct MenuBarContentView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Button {
                 open(WindowID.hosts)
             } label: {
                 Label("Manage Hosts", systemImage: "square.grid.2x2")
             }
-            Spacer()
+            .font(.system(size: 12))
+            Spacer(minLength: 8)
             Button {
-                open(WindowID.settings)
+                openSettings(pane: nil)
             } label: {
-                Image(systemName: "gearshape")
+                Label("Settings", systemImage: "gearshape")
             }
-            .help("Settings")
-            Button {
-                NSApp.terminate(nil)
+            .font(.system(size: 12))
+            Menu {
+                Button("About MenuSSH") { openSettings(pane: .about) }
+                Button("Settings…") { openSettings(pane: nil) }
+                    .keyboardShortcut(",", modifiers: .command)
+                Divider()
+                Button("Quit MenuSSH") { NSApp.terminate(nil) }
+                    .keyboardShortcut("q", modifiers: .command)
             } label: {
-                Image(systemName: "power")
+                Image(systemName: "ellipsis.circle")
+                    .accessibilityLabel("More")
             }
-            .help("Quit MenuSSH")
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            .help("More")
         }
         .buttonStyle(.borderless)
+        .labelStyle(.titleAndIcon)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+    }
+
+    private func statusLine(_ text: String, color: Color, symbol: String) -> some View {
+        Label {
+            Text(verbatim: text)
+        } icon: {
+            Image(systemName: symbol)
+        }
+        .font(.system(size: 11))
+        .foregroundStyle(color)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.horizontal, 12)
-        .padding(.vertical, 8)
+        .padding(.vertical, 6)
     }
 
     // MARK: Actions
@@ -193,7 +214,8 @@ struct MenuBarContentView: View {
 
     private func connect(_ host: SSHHost) {
         hosts.connect(host, settings: settings)
-        if hosts.lastError == nil && settings.closePanelAfterConnect {
+        // 回退提示要留在面板上，不能马上关掉。
+        if hosts.lastError == nil && hosts.lastNotice == nil && settings.closePanelAfterConnect {
             keyMonitor.close(using: dismiss)
         }
     }
@@ -202,6 +224,11 @@ struct MenuBarContentView: View {
         openWindow(id: id)
         AppActivation.bringToFront()
         keyMonitor.close(using: dismiss)
+    }
+
+    private func openSettings(pane: SettingsPaneID?) {
+        settings.pendingSettingsPane = pane
+        open(WindowID.settings)
     }
 }
 

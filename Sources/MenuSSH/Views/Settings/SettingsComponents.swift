@@ -103,6 +103,8 @@ struct SegmentedSetting<Value: Hashable & Identifiable>: View {
         }
         .pickerStyle(.segmented)
         .labelsHidden()
-        .fixedSize()
+        .controlSize(.small)
+        // 不使用 fixedSize：中文「跟随窗口」会把分段控件撑出卡片。
+        .frame(maxWidth: 280)
     }
 }

@@ -152,3 +152,6 @@
 "macOS will ask for permission the first time a session opens in %@." = "首次在 %@ 中打开会话时，macOS 会请求授权。";
 "Open %@ and click Check to see the permission state." = "请先打开 %@，再点“检查”查看授权状态。";
 "Permission state unknown (%lld)." = "授权状态未知（%lld）。";
+"About MenuSSH" = "关于 MenuSSH";
+"More" = "更多";
+"%@ is not installed. Opened this session in %@ instead." = "未安装 %@，已改在 %@ 中打开本次会话。";

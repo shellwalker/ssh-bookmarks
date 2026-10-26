@@ -5,6 +5,7 @@ import SwiftUI
 /// 设置窗口（参考 magpie）：左侧“查找设置”+ 分类导航，右侧“设置 / 分类”面包屑 + 卡片，一行一项。
 @MainActor
 struct SettingsWindowView: View {
+    @EnvironmentObject private var settings: SettingsStore
     @State private var pane: SettingsPaneID? = .general
     @State private var searchText = ""
 
@@ -34,7 +35,18 @@ struct SettingsWindowView: View {
             }
         }
         .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search Settings"))
-        .onAppear { AppActivation.bringToFront() }
+        .onAppear {
+            AppActivation.bringToFront()
+            applyPendingPane()
+        }
+        .onChange(of: settings.pendingSettingsPane) { _, _ in applyPendingPane() }
+    }
+
+    private func applyPendingPane() {
+        guard let requested = settings.pendingSettingsPane else { return }
+        pane = requested
+        searchText = ""
+        settings.pendingSettingsPane = nil
     }
 
     private var breadcrumb: some View {

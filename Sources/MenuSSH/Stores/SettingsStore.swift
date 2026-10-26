@@ -66,6 +66,9 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(closePanelAfterConnect, forKey: Keys.closePanelAfterConnect) }
     }
 
+    /// 下次设置窗口出现时切到这一页（关于 / 从菜单打开）。用完即清。
+    @Published var pendingSettingsPane: SettingsPaneID?
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
