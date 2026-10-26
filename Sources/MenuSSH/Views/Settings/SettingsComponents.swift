@@ -37,8 +37,8 @@ struct SettingsSection<Content: View>: View {
 /// 一行设置：左侧标题 + 说明，右侧控件。
 @MainActor
 struct SettingsRow<Accessory: View>: View {
-    let title: LocalizedStringKey
-    let subtitle: LocalizedStringKey?
+    let title: Text
+    let subtitle: Text?
     var showsDivider: Bool
     @ViewBuilder var accessory: Accessory
 
@@ -48,8 +48,18 @@ struct SettingsRow<Accessory: View>: View {
         showsDivider: Bool = true,
         @ViewBuilder accessory: () -> Accessory
     ) {
+        self.init(title: Text(title), subtitleText: subtitle.map { Text($0) }, showsDivider: showsDivider, accessory: accessory)
+    }
+
+    /// 说明文字需要拼接 / 原样显示（路径、版本号）时使用。
+    init(
+        title: Text,
+        subtitleText: Text?,
+        showsDivider: Bool = true,
+        @ViewBuilder accessory: () -> Accessory
+    ) {
         self.title = title
-        self.subtitle = subtitle
+        self.subtitle = subtitleText
         self.showsDivider = showsDivider
         self.accessory = accessory()
     }
@@ -58,9 +68,9 @@ struct SettingsRow<Accessory: View>: View {
         VStack(spacing: 0) {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(title).font(.system(size: 13, weight: .medium))
+                    title.font(.system(size: 13, weight: .medium))
                     if let subtitle {
-                        Text(subtitle)
+                        subtitle
                             .font(.system(size: 11))
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)

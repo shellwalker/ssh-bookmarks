@@ -40,5 +40,25 @@ struct MenuSSHApp: App {
                 .environmentObject(settings)
         }
         .defaultSize(width: 860, height: 560)
+        .commands {
+            // 替换系统的“设置…”菜单项（⌘,），打开我们自己的 Window scene。
+            CommandGroup(replacing: .appSettings) {
+                SettingsCommandButton()
+            }
+        }
+    }
+}
+
+/// Commands 里不能直接读 @Environment，包一层 View 拿 openWindow。
+@MainActor
+private struct SettingsCommandButton: View {
+    @Environment(\.openWindow) private var openWindow
+
+    var body: some View {
+        Button("Settings…") {
+            openWindow(id: WindowID.settings)
+            AppActivation.bringToFront()
+        }
+        .keyboardShortcut(",", modifiers: .command)
     }
 }
