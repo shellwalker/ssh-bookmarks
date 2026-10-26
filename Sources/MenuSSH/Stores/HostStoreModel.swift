@@ -53,6 +53,10 @@ final class HostStoreModel: ObservableObject {
         library.hosts.first { $0.id == id }
     }
 
+    func hosts(filter: HostFilter, query: String) -> [SSHHost] {
+        library.hosts(filter: filter, query: query)
+    }
+
     func groupName(for id: UUID?) -> String? {
         guard let id else { return nil }
         return library.groups.first { $0.id == id }?.name
@@ -79,15 +83,45 @@ final class HostStoreModel: ObservableObject {
         save(h)
     }
 
+    /// 复制站点，返回副本（名称加“副本”后缀）。
     @discardableResult
-    func addGroup(named name: String) -> HostGroup {
+    func duplicate(_ host: SSHHost) -> SSHHost? {
+        let copy = library.duplicateHost(id: host.id, labelSuffix: String(localized: " copy"))
+        persist()
+        return copy
+    }
+
+    func move(_ host: SSHHost, toGroup groupID: UUID?) {
+        if library.moveHost(id: host.id, toGroup: groupID) { persist() }
+    }
+
+    enum GroupNameError: LocalizedError {
+        case empty
+        case duplicate(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .empty: return String(localized: "Group name cannot be empty.")
+            case .duplicate(let name): return String(localized: "A group named “\(name)” already exists.")
+            }
+        }
+    }
+
+    @discardableResult
+    func addGroup(named rawName: String) throws -> HostGroup {
+        let name = HostInputParser.normalizedName(rawName)
+        guard !name.isEmpty else { throw GroupNameError.empty }
+        guard !library.hasGroup(named: name) else { throw GroupNameError.duplicate(name) }
         let group = HostGroup(name: name, sortOrder: (library.groups.map(\.sortOrder).max() ?? -1) + 1)
         library.upsert(group)
         persist()
         return group
     }
 
-    func renameGroup(_ group: HostGroup, to name: String) {
+    func renameGroup(_ group: HostGroup, to rawName: String) throws {
+        let name = HostInputParser.normalizedName(rawName)
+        guard !name.isEmpty else { throw GroupNameError.empty }
+        guard !library.hasGroup(named: name, excluding: group.id) else { throw GroupNameError.duplicate(name) }
         var g = group
         g.name = name
         library.upsert(g)

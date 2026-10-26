@@ -10,12 +10,7 @@ struct HostAvatar: View {
     private static let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .green, .indigo, .red]
 
     private var color: Color {
-        let sum = host.id.uuidString.unicodeScalars.reduce(0) { $0 &+ Int($1.value) }
-        return Self.palette[abs(sum) % Self.palette.count]
-    }
-
-    private var initial: String {
-        String(host.label.trimmingCharacters(in: .whitespaces).first ?? "?").uppercased()
+        Self.palette[host.avatarColorIndex(paletteCount: Self.palette.count)]
     }
 
     var body: some View {
@@ -23,10 +18,11 @@ struct HostAvatar: View {
             .fill(color.gradient)
             .frame(width: size, height: size)
             .overlay(
-                Text(initial)
+                Text(verbatim: host.avatarInitial)
                     .font(.system(size: size * 0.45, weight: .semibold, design: .rounded))
                     .foregroundStyle(.white)
             )
+            .accessibilityHidden(true)
     }
 }
 
@@ -41,19 +37,19 @@ struct HostRow: View {
             HostAvatar(host: host)
             VStack(alignment: .leading, spacing: 1) {
                 HStack(spacing: 4) {
-                    Text(host.label).font(.system(size: 13, weight: .medium)).lineLimit(1)
+                    Text(verbatim: host.label).font(.system(size: 13, weight: .medium)).lineLimit(1)
                     if host.isFavorite {
                         Image(systemName: "star.fill").font(.system(size: 9)).foregroundStyle(.yellow)
                     }
                 }
-                Text(host.subtitle)
+                Text(verbatim: host.subtitle)
                     .font(.system(size: 11))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
             if !host.tags.isEmpty {
-                Text(host.tags.prefix(2).joined(separator: ", "))
+                Text(verbatim: host.tags.prefix(2).joined(separator: ", "))
                     .font(.system(size: 10))
                     .foregroundStyle(.secondary)
                     .lineLimit(1)

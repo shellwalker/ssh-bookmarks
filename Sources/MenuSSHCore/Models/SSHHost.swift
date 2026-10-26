@@ -138,12 +138,16 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         updatedAt = try c.decodeIfPresent(Date.self, forKey: .updatedAt) ?? Date()
     }
 
-    /// 列表中显示的副标题，例如 `deploy@10.0.0.15:2201`。
+    /// 列表中显示的副标题（Termius 风格 `user@host:port`），例如 `deploy@10.0.0.15:2201`。
+    /// 未填写的部分省略（由 ~/.ssh/config 决定）；IPv6 地址带端口时加方括号。
     public var subtitle: String {
         var s = ""
         if !username.isEmpty { s += "\(username)@" }
-        s += hostname
-        if let port, port != 22 { s += ":\(port)" }
+        if let port {
+            s += hostname.contains(":") ? "[\(hostname)]:\(port)" : "\(hostname):\(port)"
+        } else {
+            s += hostname
+        }
         return s
     }
 }

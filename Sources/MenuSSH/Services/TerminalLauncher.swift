@@ -11,7 +11,7 @@ enum TerminalLaunchError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .invalidHost(let e):
-            return String(localized: "Invalid host settings: \(String(describing: e))")
+            return e.message
         case .terminalNotInstalled(let t):
             return String(localized: "\(t.displayName) is not installed.")
         case .automationDenied(let t):

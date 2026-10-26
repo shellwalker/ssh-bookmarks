@@ -46,3 +46,12 @@ final class HostInputParserTests: XCTestCase {
         XCTAssertEqual(host.avatarColorIndex(paletteCount: 0), 0)
     }
 }
+
+final class HostSubtitleTests: XCTestCase {
+    func testSubtitle() {
+        XCTAssertEqual(SSHHost(label: "a", hostname: "10.0.0.15", port: 2201, username: "deploy").subtitle, "deploy@10.0.0.15:2201")
+        XCTAssertEqual(SSHHost(label: "a", hostname: "h", port: 22, username: "root").subtitle, "root@h:22")
+        XCTAssertEqual(SSHHost(label: "a", hostname: "alias").subtitle, "alias")
+        XCTAssertEqual(SSHHost(label: "a", hostname: "fe80::1", port: 22).subtitle, "[fe80::1]:22")
+    }
+}
