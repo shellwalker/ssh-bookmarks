@@ -81,10 +81,9 @@ final class HostFilterTests: XCTestCase {
         let leaf = HostGroup(name: "Leaf", parentID: child.id, sortOrder: 0)
         let orphan = HostGroup(name: "Orphan", parentID: UUID(), sortOrder: 1)
         var lib = HostLibrary(groups: [leaf, orphan, child, root])
-        XCTAssertEqual(
-            lib.groupOutline().map { ($0.group.name, $0.depth) },
-            [("Root", 0), ("Child", 1), ("Leaf", 2), ("Orphan", 0)]
-        )
+        let outline = lib.groupOutline()
+        XCTAssertEqual(outline.map(\.group.name), ["Root", "Child", "Leaf", "Orphan"])
+        XCTAssertEqual(outline.map(\.depth), [0, 1, 2, 0])
         XCTAssertFalse(lib.reparentGroup(id: root.id, parentID: leaf.id))
         XCTAssertFalse(lib.reparentGroup(id: root.id, parentID: root.id))
         XCTAssertFalse(lib.reparentGroup(id: root.id, parentID: UUID()))
