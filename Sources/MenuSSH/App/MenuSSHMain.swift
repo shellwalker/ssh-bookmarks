@@ -1,3 +1,4 @@
+import AppKit
 import MenuSSHCore
 import SwiftUI
 
@@ -8,6 +9,13 @@ enum MenuSSHMain {
         if ProcessInfo.processInfo.environment[AskpassTokenStore.environmentVariable] != nil {
             AskpassMain.run()
         }
-        MenuSSHApp.main()
+        // 测试模式在 SwiftUI 建窗口之前就变成普通应用，否则 LSUIElement 下窗口出不来。
+        // 正式路径仍进入 MenuSSHApp（菜单栏面板）。SceneBuilder 不能在运行时切换场景。
+        if UITestLaunch.isEnabled {
+            NSApplication.shared.setActivationPolicy(.regular)
+            MenuSSHUITestApp.main()
+        } else {
+            MenuSSHApp.main()
+        }
     }
 }

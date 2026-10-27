@@ -23,7 +23,7 @@ macOS 菜单栏上的 SSH 站点管理器。点击菜单栏图标可以搜索并
 ## 构建
 
 ```bash
-swift test                 # 运行核心库测试（Linux 上也能跑）
+swift test                 # 运行核心库测试（Linux 上也能跑；本机 sshd / UI 见 docs/testing.md）
 Scripts/build_app.sh       # 产出 build/MenuSSH.app（默认 ad-hoc 签名）
 Scripts/package.sh         # 产出 dist/MenuSSH-<版本>-arm64.zip
 open build/MenuSSH.app

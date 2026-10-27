@@ -18,6 +18,8 @@ final class HostStoreModel: ObservableObject {
     init(fileStore: HostFileStore? = nil) {
         if let fileStore {
             self.fileStore = fileStore
+        } else if let directory = UITestLaunch.dataDirectory {
+            self.fileStore = HostFileStore(fileURL: directory.appendingPathComponent("hosts.json"))
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             self.fileStore = HostFileStore(fileURL: HostFileStore.defaultFileURL(appSupportDirectory: appSupport))

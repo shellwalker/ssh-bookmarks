@@ -55,6 +55,7 @@ struct HostRow: View {
                     .lineLimit(1)
             }
         }
+        .accessibilityIdentifier(UITestID.host(host.label))
     }
 }
 

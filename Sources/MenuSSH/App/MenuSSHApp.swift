@@ -22,7 +22,6 @@ struct MenuSSHApp: App {
     }
 
     var body: some Scene {
-        // 第一个 Scene 是菜单栏常驻面板（window 风格，可放搜索框和列表）。
         MenuBarExtra {
             MenuBarContentView()
                 .environmentObject(hostStore)
@@ -72,5 +71,42 @@ struct MenuSSHApp: App {
                 .keyboardShortcut("q", modifiers: .command)
             }
         }
+    }
+}
+
+/// XCUITest 点不开 MenuBarExtra。测试模式改用普通窗口承载同一份面板视图。
+/// SceneBuilder 不支持运行时 if，所以这是另一个 App，而不是在正式 App 里分支。
+@MainActor
+struct MenuSSHUITestApp: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
+    @StateObject private var hostStore: HostStoreModel
+    @StateObject private var settings: SettingsStore
+
+    init() {
+        _hostStore = StateObject(wrappedValue: HostStoreModel.shared)
+        _settings = StateObject(wrappedValue: SettingsStore.shared)
+    }
+
+    var body: some Scene {
+        WindowGroup(id: "ui-test-panel") {
+            MenuBarContentView()
+                .environmentObject(hostStore)
+                .environmentObject(settings)
+        }
+        .defaultSize(width: 380, height: 520)
+
+        Window("MenuSSH", id: WindowID.hosts) {
+            HostManagerView()
+                .environmentObject(hostStore)
+                .environmentObject(settings)
+        }
+        .defaultSize(width: 920, height: 580)
+
+        Window("Settings", id: WindowID.settings) {
+            SettingsWindowView()
+                .environmentObject(hostStore)
+                .environmentObject(settings)
+        }
+        .defaultSize(width: 860, height: 560)
     }
 }
