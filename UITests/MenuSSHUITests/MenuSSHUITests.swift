@@ -186,33 +186,51 @@ final class MenuSSHUITests: XCTestCase {
         XCTAssertTrue(element.waitForExistence(timeout: 8))
         var tries = 0
         while tries < 6, !isComfortablyVisible(element, app: app) {
-            guard nudgeSheet(app) else { break }
+            guard nudgeForm(element, app: app) else { break }
             tries += 1
         }
     }
 
-    /// 只有编辑表单会高出窗口。侧栏按钮贴着窗口底部，不能拿去滚。
+    /// 表单滚动区会裁切下面的字段。窗口够大也没用，字段必须落在 ScrollView 里面才能获得键盘焦点。
+    /// 侧栏按钮不在 sheet 里，不滚动。
     private func isComfortablyVisible(_ element: XCUIElement, app: XCUIApplication) -> Bool {
-        guard element.isHittable, element.frame.height > 1, element.frame.minY.isFinite else { return false }
-        guard app.sheets.firstMatch.exists else { return true }
-        return element.frame.midY < visibleBottom(app) - 30 && element.frame.minY > 50
-    }
-
-    private func visibleBottom(_ app: XCUIApplication) -> CGFloat {
-        var bottom: CGFloat = 0
-        for index in 0..<app.windows.count {
-            let frame = app.windows.element(boundBy: index).frame
-            if frame.height > 100, frame.maxY.isFinite { bottom = max(bottom, frame.maxY) }
+        let frame = element.frame
+        guard frame.width > 1, frame.height > 1, frame.minY.isFinite, frame.maxY.isFinite else { return false }
+        if let scroll = formScroll(containing: element, app: app) {
+            let viewport = scroll.frame
+            return frame.minY >= viewport.minY + 4 && frame.maxY <= viewport.maxY - 4
         }
-        return bottom > 0 ? bottom : app.frame.maxY
+        let sheet = app.sheets.firstMatch
+        guard sheet.exists, sheet.frame.height > 1 else { return element.isHittable }
+        return frame.minY >= sheet.frame.minY + 4 && frame.maxY <= sheet.frame.maxY - 4
     }
 
-    /// 用系统的 swipe，不用 app.coordinate。macOS 上应用坐标可能是 INFINITY。
-    private func nudgeSheet(_ app: XCUIApplication) -> Bool {
-        let sheet = app.sheets.firstMatch
-        guard sheet.exists, sheet.frame.width > 1, sheet.frame.height > 1 else { return false }
-        sheet.swipeUp()
+    /// 用滚动视图自己的坐标拖动。XCUIApplication 的坐标在 macOS 上是 INFINITY。
+    private func nudgeForm(_ element: XCUIElement, app: XCUIApplication) -> Bool {
+        guard let scroll = formScroll(containing: element, app: app) else { return false }
+        let viewport = scroll.frame
+        guard viewport.height > 40, element.frame.minY.isFinite else { return false }
+        let downward = element.frame.maxY > viewport.maxY - 4
+        let upward = element.frame.minY < viewport.minY + 4
+        guard downward || upward else { return false }
+        let startY: CGFloat = downward ? 0.75 : 0.35
+        let endY: CGFloat = downward ? 0.45 : 0.65
+        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: startY))
+        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: endY))
+        start.press(forDuration: 0.05, thenDragTo: end)
+        Thread.sleep(forTimeInterval: 0.3)
         return true
+    }
+
+    private func formScroll(containing element: XCUIElement, app: XCUIApplication) -> XCUIElement? {
+        let sheet = app.sheets.firstMatch
+        guard sheet.exists else { return nil }
+        let scroll = sheet.scrollViews.firstMatch
+        guard scroll.exists, scroll.frame.height > 40 else { return nil }
+        let identifier = element.identifier
+        guard !identifier.isEmpty else { return nil }
+        let inner = scroll.descendants(matching: .any).matching(identifier: identifier).firstMatch
+        return inner.exists ? scroll : nil
     }
 
     private func ensureOn(_ toggle: XCUIElement, app: XCUIApplication) {
