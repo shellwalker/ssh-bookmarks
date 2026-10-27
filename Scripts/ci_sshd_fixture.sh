@@ -92,6 +92,7 @@ PermitRootLogin no
 StrictModes no
 UseDNS no
 MaxStartups 50:30:200
+MaxAuthTries 20
 PerSourcePenalties no
 LogLevel VERBOSE
 PrintMotd no
@@ -146,22 +147,26 @@ EOF
   sudo chown -R "$USER_NAME:staff" "/Users/$USER_NAME/.ssh"
   sudo chmod 700 "/Users/$USER_NAME/.ssh"
   sudo chmod 600 "/Users/$USER_NAME/.ssh/authorized_keys"
-  cat >"$DIR/.ssh/config" <<'EOF'
+  cat >"$DIR/.ssh/config" <<EOF
 Host *
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
     GlobalKnownHostsFile /dev/null
+    IdentitiesOnly yes
+    IdentityFile $DIR/id_ed25519
 EOF
   chmod 644 "$DIR/.ssh/config"
   # -J 的跳板连接不一定继承命令行 -o。把主机密钥检查关掉写进系统配置的最前面（第一次出现的值生效）。
   if ! sudo grep -q 'MENUSH-CI-HOSTKEY' /etc/ssh/ssh_config 2>/dev/null; then
     local prefix
     prefix="$(mktemp)"
-    cat >"$prefix" <<'EOF'
+    cat >"$prefix" <<EOF
 # MENUSH-CI-HOSTKEY
 Host *
     StrictHostKeyChecking no
     UserKnownHostsFile /dev/null
+    IdentitiesOnly yes
+    IdentityFile $DIR/id_ed25519
 EOF
     sudo sh -c "cat '$prefix' /etc/ssh/ssh_config > /etc/ssh/ssh_config.menush && mv /etc/ssh/ssh_config.menush /etc/ssh/ssh_config"
     rm -f "$prefix"

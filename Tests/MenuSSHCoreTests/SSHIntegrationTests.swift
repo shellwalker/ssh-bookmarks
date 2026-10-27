@@ -188,6 +188,8 @@ final class SSHIntegrationTests: XCTestCase {
                 StrictHostKeyChecking no
                 UserKnownHostsFile /dev/null
                 GlobalKnownHostsFile /dev/null
+                IdentitiesOnly yes
+                IdentityFile \(fixture.key)
             """
         try config.write(to: sshDir.appendingPathComponent("config"), atomically: true, encoding: .utf8)
         let text = try String(contentsOf: sshDir.appendingPathComponent("config"))

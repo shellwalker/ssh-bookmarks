@@ -185,15 +185,35 @@ final class MenuSSHUITests: XCTestCase {
     private func reveal(_ element: XCUIElement, app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 8))
         var tries = 0
-        while !element.isHittable && tries < 8 {
-            let sheet = app.sheets.firstMatch
-            if sheet.exists {
-                sheet.swipeUp()
-            } else {
-                app.swipeUp()
-            }
+        while tries < 8, !isComfortablyVisible(element, app: app) {
+            nudgeUp(app)
             tries += 1
         }
+    }
+
+    /// 编辑表单比窗口高，字段在屏幕外时点得到但拿不到键盘焦点。
+    private func isComfortablyVisible(_ element: XCUIElement, app: XCUIApplication) -> Bool {
+        guard element.isHittable, element.frame.height > 1 else { return false }
+        return element.frame.midY < visibleBottom(app) - 30 && element.frame.minY > 50
+    }
+
+    private func visibleBottom(_ app: XCUIApplication) -> CGFloat {
+        var bottom: CGFloat = 0
+        for index in 0..<app.windows.count {
+            let frame = app.windows.element(boundBy: index).frame
+            if frame.height > 100 { bottom = max(bottom, frame.maxY) }
+        }
+        return bottom > 0 ? bottom : app.frame.maxY
+    }
+
+    private func nudgeUp(_ app: XCUIApplication) {
+        let bottom = visibleBottom(app)
+        let sheet = app.sheets.firstMatch
+        let x = sheet.exists ? sheet.frame.midX : app.frame.midX
+        let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
+        let start = origin.withOffset(CGVector(dx: x, dy: bottom - 120))
+        let end = origin.withOffset(CGVector(dx: x, dy: bottom - 300))
+        start.press(forDuration: 0.05, thenDragTo: end)
     }
 
     private func ensureOn(_ toggle: XCUIElement, app: XCUIApplication) {
@@ -249,7 +269,7 @@ final class MenuSSHUITests: XCTestCase {
     }
 
     private func replace(_ field: XCUIElement, _ text: String) {
-        XCTAssertTrue(field.waitForExistence(timeout: 8))
+        reveal(field, app: XCUIApplication())
         field.click()
         field.typeKey("a", modifierFlags: .command)
         if text.isEmpty {
