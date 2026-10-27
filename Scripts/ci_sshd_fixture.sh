@@ -51,7 +51,7 @@ ensure_user() {
     return
   fi
   if ! sudo /usr/sbin/sysadminctl -addUser "$USER_NAME" \
-    -fullName "MenuSSH CI" \
+    -fullName "SSH Bookmarks CI" \
     -password "$password" \
     -home "/Users/$USER_NAME" \
     -shell /bin/zsh >/dev/null 2>&1
@@ -62,7 +62,7 @@ ensure_user() {
     done
     sudo dscl . -create "/Users/$USER_NAME"
     sudo dscl . -create "/Users/$USER_NAME" UserShell /bin/zsh
-    sudo dscl . -create "/Users/$USER_NAME" RealName "MenuSSH CI"
+    sudo dscl . -create "/Users/$USER_NAME" RealName "SSH Bookmarks CI"
     sudo dscl . -create "/Users/$USER_NAME" UniqueID "$uid"
     sudo dscl . -create "/Users/$USER_NAME" PrimaryGroupID 20
     sudo dscl . -create "/Users/$USER_NAME" NFSHomeDirectory "/Users/$USER_NAME"
@@ -185,12 +185,19 @@ EOF
 
   cat >"$ENV_FILE" <<EOF
 MENUSH_INTEGRATION=1
+SSHBOOKMARKS_INTEGRATION=1
 MENUSH_SSH_USER=$USER_NAME
+SSHBOOKMARKS_SSH_USER=$USER_NAME
 MENUSH_SSH_KEY=$DIR/id_ed25519
+SSHBOOKMARKS_SSH_KEY=$DIR/id_ed25519
 MENUSH_SSH_PORT_A=$port_a
+SSHBOOKMARKS_SSH_PORT_A=$port_a
 MENUSH_SSH_PORT_B=$port_b
+SSHBOOKMARKS_SSH_PORT_B=$port_b
 MENUSH_SSH_ASKPASS=$ASKPASS
+SSHBOOKMARKS_SSH_ASKPASS=$ASKPASS
 MENUSH_SSH_HOME=$DIR
+SSHBOOKMARKS_SSH_HOME=$DIR
 EOF
   chmod 600 "$ENV_FILE"
   echo "sshd fixture ready on 127.0.0.1:$port_a and :$port_b"

@@ -31,15 +31,15 @@ echo "==> build app"
 ARCH="${ARCH:-arm64}" Scripts/build_app.sh
 
 rm -rf "$ROOT/build/ui-screenshots" "$ROOT/build/ui-results.xcresult" "$ROOT/build/ui-derived" \
-  "$ROOT/MenuSSHUI.xcodeproj" /tmp/menush-ui-screenshots
+  "$ROOT/SSHBookmarksUI.xcodeproj" /tmp/menush-ui-screenshots
 mkdir -p "$ROOT/build/ui-screenshots"
 
 echo "==> generate Xcode project"
 xcodegen generate --spec "$ROOT/project.yml" --project "$ROOT"
 
-SCHEME="$(find "$ROOT/MenuSSHUI.xcodeproj" -name 'MenuSSHUI.xcscheme' | head -n 1)"
+SCHEME="$(find "$ROOT/SSHBookmarksUI.xcodeproj" -name 'SSHBookmarksUI.xcscheme' | head -n 1)"
 if [[ -z "$SCHEME" ]]; then
-  echo "missing MenuSSHUI.xcscheme" >&2
+  echo "missing SSHBookmarksUI.xcscheme" >&2
   exit 1
 fi
 python3 - "$SCHEME" "$ROOT/build/ui-screenshots" <<'PY'
@@ -83,8 +83,8 @@ echo "==> XCUITest"
 export MENUSH_SCREENSHOT_DIR="$ROOT/build/ui-screenshots"
 set +e
 xcodebuild test \
-  -project "$ROOT/MenuSSHUI.xcodeproj" \
-  -scheme MenuSSHUI \
+  -project "$ROOT/SSHBookmarksUI.xcodeproj" \
+  -scheme SSHBookmarksUI \
   -destination "platform=macOS,arch=arm64" \
   -derivedDataPath "$ROOT/build/ui-derived" \
   -resultBundlePath "$ROOT/build/ui-results.xcresult" \

@@ -1,10 +1,10 @@
-# MenuSSH 技术方案
+# SSH Bookmarks 技术方案
 
-> 本文所写的 MenuSSHCore 已经实现，并在 Linux 上通过了单元测试；macOS 应用层（SwiftUI / AppKit）目前只做了语法解析检查，还需要在 Mac 或 CI 上实际编译和验证。§10 列出了所有未验证项。
+> 本文所写的 SSHBookmarksCore 已经实现，并在 Linux 上通过了单元测试；macOS 应用层（SwiftUI / AppKit）目前只做了语法解析检查，还需要在 Mac 或 CI 上实际编译和验证。§10 列出了所有未验证项。
 
 ## 1. 目标与边界
 
-MenuSSH 是 macOS 菜单栏上的 SSH 站点管理器。点击菜单栏图标会弹出可搜索的站点列表，点击某个站点后，在用户选择的终端（Terminal / iTerm2 / Ghostty）里执行 `ssh`。
+SSH Bookmarks 是 macOS 菜单栏上的 SSH 站点管理器。点击菜单栏图标会弹出可搜索的站点列表，点击某个站点后，在用户选择的终端（Terminal / iTerm2 / Ghostty）里执行 `ssh`。
 
 **不做**：内置终端、SFTP、云同步、账号体系。
 
@@ -24,17 +24,17 @@ MenuSSH 是 macOS 菜单栏上的 SSH 站点管理器。点击菜单栏图标会
 
 ```
 Package.swift
-├─ MenuSSHCore（library，只依赖 Foundation，Linux 可测）
+├─ SSHBookmarksCore（library，只依赖 Foundation，Linux 可测）
 │   ├─ Models/     SSHHost、HostGroup、HostLibrary（搜索 / 分区）、AppPreferences 枚举
 │   ├─ SSH/        SSHCommandBuilder（argv + 校验）、Quoting（shell / AppleScript 转义）、SSHConfigParser
 │   ├─ Terminal/   TerminalApp、TerminalLaunchPlanner（纯函数，生成 AppleScript 或 Process 计划）
 │   └─ Storage/    HostFileStore（JSON 原子写，0600 权限）
-├─ MenuSSH（executable，仅 macOS）
-│   ├─ App/        MenuSSHApp（Scenes）、AppDelegate、DockIconController、AppearanceController
+├─ SSHBookmarks（executable，仅 macOS；.app 显示名为 SSH Bookmarks）
+│   ├─ App/        SSHBookmarksApp（Scenes）、AppDelegate、DockIconController、AppearanceController
 │   ├─ Services/   TerminalLauncher（执行计划）、KeychainService、LoginItemController
 │   ├─ Stores/     SettingsStore（UserDefaults）、HostStoreModel（ObservableObject）
 │   └─ Views/      MenuBar/、Hosts/（主窗口 + 编辑器）、Settings/（magpie 风格）
-└─ Tests/MenuSSHCoreTests
+└─ Tests/SSHBookmarksCoreTests
 ```
 
 数据流：View → `HostStoreModel` → `HostLibrary`（值类型）→ `HostFileStore.save`。连接时调用 `SSHCommandBuilder.argv` 生成 argv，交给 `TerminalLaunchPlanner.plan` 得到启动计划，再由 `TerminalLauncher.execute` 执行。
@@ -78,7 +78,7 @@ argv 按以下顺序拼出：
 ### 4.4 权限、Entitlements 与 Sandbox
 
 - Info.plist 中写 `NSAppleEventsUsageDescription`。首次控制每个终端时，系统都会弹出“自动化”授权对话框。
-- `MenuSSH.entitlements` 中写 `com.apple.security.automation.apple-events = true`。开启 Hardened Runtime（Developer ID 和公证都要求）后，没有这一项就无法发送 Apple Events。
+- `SSHBookmarks.entitlements` 中写 `com.apple.security.automation.apple-events = true`。开启 Hardened Runtime（Developer ID 和公证都要求）后，没有这一项就无法发送 Apple Events。
 - 授权被拒时返回 `-1743`。应用会把它映射为可读的错误提示，并在设置页提供“打开隐私设置”按钮。
 - **不启用 App Sandbox**，原因有三：
   1. 沙盒应用发送 Apple Events 需要为每个目标 app 申请 `temporary-exception.apple-events`，而 Mac App Store 审核对此限制严格。
@@ -87,18 +87,23 @@ argv 按以下顺序拼出：
 
 ## 5. 数据与存储
 
-- 站点数据：`~/Library/Application Support/MenuSSH/hosts.json`。
+- 站点数据：`~/Library/Application Support/SSH Bookmarks/hosts.json`。
   - 格式：`{ schemaVersion, groups[], hosts[] }`，排序后的 key、ISO 8601 日期。
   - 目录权限 0700，文件权限 0600，原子写入。
   - 解析失败时，先把原文件备份为 `hosts.corrupt-<时间戳>.json`，再报错，不会覆盖用户数据。
   - 解码比较宽松：缺失字段使用默认值，方便将来升级 schema。
+  - 从 MenuSSH 升级时，若新目录还不存在，会把整个 `Application Support/MenuSSH`（含 `Logs/`）改名为 `SSH Bookmarks`。新目录已存在则不动，避免盖掉后来写入的文件。
+- 偏好：第一次启动从旧域 `com.shellwalker.MenuSSH` 抄一份允许列表里的键（外观、语言、终端、同步开关和文件夹、设备 id 等）。新域里已有的键不覆盖，抄完写标记，之后不再抄。
+- 钥匙串：新 service 是 `com.shellwalker.SSHBookmarks`。读取时若新 service 没有、旧 service `com.shellwalker.MenuSSH` 有，就把密码写回新 service 并删掉旧条目。密码不进日志。
+- 诊断日志目录是 Application Support 里的 `Logs/`，跟着上面的文件夹一起搬。
+- iCloud 同步目录仍是 `~/Library/Mobile Documents/com~apple~CloudDocs/MenuSSH/`。还在旧构建上的设备只认这个名字，改名会把它们留在原地。
 - `SSHHost` 字段：id、label、hostname、port?、username、groupID?、tags、authMethod（automatic / publicKey / password）、identityFile?、jumpHost?、portForwards[]、extraOptions[]、isFavorite、notes、lastConnectedAt、createdAt、updatedAt。
 - 机密信息：Keychain generic password。
-  - `service` 为 bundle id，`account` 为 `host.<uuid>.password`。没有私钥口令保险库，不再使用 `passphrase` 账户。`accessible` 为 WhenUnlockedThisDeviceOnly，且不同步。
+  - `service` 为 bundle id（`com.shellwalker.SSHBookmarks`），`account` 为 `host.<uuid>.password`。没有私钥口令保险库，不再使用 `passphrase` 账户。`accessible` 为 WhenUnlockedThisDeviceOnly，且不同步。旧 service `com.shellwalker.MenuSSH` 只在读取时回退。
   - 删除站点时同时清理对应条目。
   - 机密信息绝不写入 JSON，也绝不出现在命令行里。
 - 密码登录（M3）：
-  - 设置 `SSH_ASKPASS=<MenuSSH.app 可执行文件> --askpass <hostID>` 和 `SSH_ASKPASS_REQUIRE=force`，由 app 自身从 Keychain 读出密码并打印给 ssh。
+  - 设置 `SSH_ASKPASS=<SSH Bookmarks.app/Contents/MacOS/SSHBookmarks>` 和 `SSH_ASKPASS_REQUIRE=force`，由 app 自身从 Keychain 读出密码并打印给 ssh。
   - 这些环境变量需要通过终端传递，具体方案待定：可以写入一个一次性的 0700 包装脚本，或使用 Ghostty / iTerm2 的环境变量配置。
   - 要让 Keychain 的“始终允许”持续有效，需要稳定的签名身份。
 - `~/.ssh/config` 导入：

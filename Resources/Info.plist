@@ -5,11 +5,11 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
-	<string>MenuSSH</string>
+	<string>SSH Bookmarks</string>
 	<key>CFBundleExecutable</key>
-	<string>MenuSSH</string>
+	<string>SSHBookmarks</string>
 	<key>CFBundleIdentifier</key>
-	<string>com.shellwalker.MenuSSH</string>
+	<string>com.shellwalker.SSHBookmarks</string>
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleLocalizations</key>
@@ -18,7 +18,7 @@
 		<string>zh-Hans</string>
 	</array>
 	<key>CFBundleName</key>
-	<string>MenuSSH</string>
+	<string>SSH Bookmarks</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
@@ -32,7 +32,7 @@
 	<key>LSUIElement</key>
 	<true/>
 	<key>NSAppleEventsUsageDescription</key>
-	<string>MenuSSH needs to control your terminal app (Terminal, iTerm2 or Ghostty) to open SSH sessions.</string>
+	<string>SSH Bookmarks needs to control your terminal app (Terminal, iTerm2 or Ghostty) to open SSH sessions.</string>
 	<key>NSHighResolutionCapable</key>
 	<true/>
 	<key>NSHumanReadableCopyright</key>

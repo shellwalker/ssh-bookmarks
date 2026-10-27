@@ -1,4 +1,4 @@
-name: MenuSSHUI
+name: SSHBookmarksUI
 options:
   bundleIdPrefix: com.shellwalker
   deploymentTarget:
@@ -11,21 +11,22 @@ settings:
   CODE_SIGNING_REQUIRED: NO
   ENABLE_HARDENED_RUNTIME: NO
 targets:
-  MenuSSH:
+  SSHBookmarks:
     type: application
     platform: macOS
     sources:
       - path: UITests/HostStub.swift
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.shellwalker.MenuSSH
+      PRODUCT_NAME: SSH Bookmarks
+      PRODUCT_BUNDLE_IDENTIFIER: com.shellwalker.SSHBookmarks
       GENERATE_INFOPLIST_FILE: NO
       INFOPLIST_FILE: Resources/Info.plist
-      CODE_SIGN_ENTITLEMENTS: Resources/MenuSSH.entitlements
+      CODE_SIGN_ENTITLEMENTS: Resources/SSHBookmarks.entitlements
     postBuildScripts:
       - name: Use SwiftPM app bundle
         script: |
           set -euo pipefail
-          APP="${SRCROOT}/build/MenuSSH.app"
+          APP="${SRCROOT}/build/SSH Bookmarks.app"
           DEST="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}"
           if [[ ! -d "$APP" ]]; then
             echo "missing $APP — run Scripts/build_app.sh first" >&2
@@ -33,28 +34,28 @@ targets:
           fi
           rm -rf "$DEST"
           cp -R "$APP" "$DEST"
-          codesign --force --sign - --entitlements "${SRCROOT}/Resources/MenuSSH.entitlements" "$DEST"
-  MenuSSHUITests:
+          codesign --force --sign - --entitlements "${SRCROOT}/Resources/SSHBookmarks.entitlements" "$DEST"
+  SSHBookmarksUITests:
     type: bundle.ui-testing
     platform: macOS
     sources:
-      - path: UITests/MenuSSHUITests
+      - path: UITests/SSHBookmarksUITests
     dependencies:
-      - target: MenuSSH
+      - target: SSHBookmarks
     settings:
-      PRODUCT_BUNDLE_IDENTIFIER: com.shellwalker.MenuSSHUITests
+      PRODUCT_BUNDLE_IDENTIFIER: com.shellwalker.SSHBookmarksUITests
       GENERATE_INFOPLIST_FILE: YES
-      TEST_TARGET_NAME: MenuSSH
+      TEST_TARGET_NAME: SSHBookmarks
       CODE_SIGN_STYLE: Manual
       CODE_SIGN_IDENTITY: "-"
 schemes:
-  MenuSSHUI:
+  SSHBookmarksUI:
     build:
       targets:
-        MenuSSH: all
-        MenuSSHUITests: [test]
+        SSHBookmarks: all
+        SSHBookmarksUITests: [test]
     test:
       targets:
-        - MenuSSHUITests
+        - SSHBookmarksUITests
       environmentVariables:
         MENUSH_SCREENSHOT_DIR: $(SRCROOT)/build/ui-screenshots

@@ -1,4 +1,4 @@
-# MenuSSH 调研：iTermGUI 与 Termius
+# SSH Bookmarks 调研：iTermGUI 与 Termius
 
 > 调研日期：2026-10-26。iTermGUI 是直接读的仓库源码（通过 GitHub API 和 raw 文件，没有 clone）；Termius 只看了官网和官方文档，未实际安装使用。
 
@@ -20,20 +20,20 @@
 
 ### 1.2 值得借鉴
 
-1. **纯 SwiftPM 加打包脚本**：不用 Xcode 工程也能产出 `.app`，CI 只需 `swift build`，Linux 上也能跑 Core 的测试。MenuSSH 直接沿用。
-2. **副作用全部抽象成可注入接口**（AppleScript、Process、Keychain、文件）。核心逻辑因此可以单测，MenuSSH 的 `MenuSSHCore` 就是按这个思路拆出来的。
+1. **纯 SwiftPM 加打包脚本**：不用 Xcode 工程也能产出 `.app`，CI 只需 `swift build`，Linux 上也能跑 Core 的测试。SSH Bookmarks 直接沿用。
+2. **副作用全部抽象成可注入接口**（AppleScript、Process、Keychain、文件）。核心逻辑因此可以单测，SSH Bookmarks 的 `SSHBookmarksCore` 就是按这个思路拆出来的。
 3. **智能分组**：收藏 / 最近，加上自定义分组和标签。
-4. **SSH_ASKPASS 密码助手**：app 自身作为 askpass 程序，从 Keychain 读密码，避免明文出现在命令行或剪贴板。MenuSSH 计划在 M3 实现。
+4. **SSH_ASKPASS 密码助手**：app 自身作为 askpass 程序，从 Keychain 读密码，避免明文出现在命令行或剪贴板。SSH Bookmarks 计划在 M3 实现。
 5. **`~/.ssh/config` 导入**：以 alias 作为连接目标，保留 config 中的全部选项。
 6. **签名注意点**：ad-hoc 签名每次构建身份都会变，Keychain 的“始终允许”随之失效。开发期需要稳定的自签名身份，正式发布用 Developer ID。
 
 ### 1.3 不采用 / 需要规避
 
-1. **命令拼接没有转义**：`buildSSHCommand` 用空格把参数直接拼起来，host、用户名或路径里有空格或 shell 元字符时会出错，甚至可被注入。MenuSSH 必须先构建 argv，再统一做 POSIX 单引号转义，并做输入校验（见 design.md §4）。
-2. **要求 macOS 26 / Swift 6.2**：门槛太高。MenuSSH 定在 macOS 14+、Swift 5.9 工具链，GitHub `macos-14` runner 可以直接构建。
+1. **命令拼接没有转义**：`buildSSHCommand` 用空格把参数直接拼起来，host、用户名或路径里有空格或 shell 元字符时会出错，甚至可被注入。SSH Bookmarks 必须先构建 argv，再统一做 POSIX 单引号转义，并做输入校验（见 design.md §4）。
+2. **要求 macOS 26 / Swift 6.2**：门槛太高。SSH Bookmarks 定在 macOS 14+、Swift 5.9 工具链，GitHub `macos-14` runner 可以直接构建。
 3. **内嵌终端（SwiftTerm）和 SFTP**：工作量大，也偏离“在用户自己的终端里打开”的定位，不做。
-4. **数据放在 `~/Documents`**：容易被 iCloud 同步或误删。MenuSSH 放到 `~/Library/Application Support/MenuSSH/`，并设为 0600 权限。
-5. **只深度支持 iTerm2**：MenuSSH 要同时支持 Terminal.app、iTerm2 和 Ghostty。
+4. **数据放在 `~/Documents`**：容易被 iCloud 同步或误删。SSH Bookmarks 放到 `~/Library/Application Support/SSH Bookmarks/`，并设为 0600 权限。
+5. **只深度支持 iTerm2**：SSH Bookmarks 要同时支持 Terminal.app、iTerm2 和 Ghostty。
 
 ## 2. Termius
 
@@ -88,7 +88,7 @@
 
 参考图见 `ref/magpie-settings.png`：左侧是分类导航；右侧顶部是“设置 / 常规”面包屑和“查找设置”搜索框，下方是卡片式分组，每行左边标题、右边分段控件或下拉框。
 
-MenuSSH 沿用的行：
+SSH Bookmarks 沿用的行：
 
 | 设置 | 选项 |
 | --- | --- |

@@ -8,7 +8,7 @@ CI 在 `macos-14` arm64 runner 上分三个 job 并行跑。任一失败都会�
 | UI automation and screenshots | 启动测试模式的 `.app`，用 XCUITest 走主路径，并截全屏 |
 | SSH and sync end-to-end | 本机两个临时 sshd，加上同步文件 schema 检查 |
 
-触发条件与原来的构建一样：推送到 `develop` / `main`，或向这两个分支提 PR。发布工作流 `release.yml` 在打包之前也会跑同一套 sshd 集成测试（`MENUSH_INTEGRATION=1`）。界面测试仍只在 PR / `develop` 的 `build.yml` 里跑。
+触发条件与原来的构建一样：推送到 `develop` / `main`，或向这两个分支提 PR。发布工作流 `release.yml` 在打包之前也会跑同一套 sshd 集成测试（`SSHBOOKMARKS_INTEGRATION=1`，旧名 `MENUSH_INTEGRATION` 仍有效）。界面测试仍只在 PR / `develop` 的 `build.yml` 里跑。
 
 ## CI 已经覆盖
 
@@ -23,12 +23,13 @@ CI 在 `macos-14` arm64 runner 上分三个 job 并行跑。任一失败都会�
 - 公钥登录、askpass 密码登录、`-J` 两个 sshd、`-L` / `-R` / `-D`、启动命令经 pty 送到远端 shell、`ForwardAgent`、带 `Include` 的 config 解析后按字段连上。
 - 同步文件 schema 1 读入、与更新的记录合并后写成 schema 2，且编码结果里没有 `password` 等禁止键。备注里出现 “password” 这个词不算泄密。
 
-测试模式只在 `MENUSH_UI_TEST=1`（或 `--ui-test`）时生效：
+测试模式只在 `SSHBOOKMARKS_UI_TEST=1`（或 `--ui-test`）时生效。旧名 `MENUSH_UI_TEST` 以及下面每个 `MENUSH_*` 仍作为别名。
 
-- `MENUSH_DATA_DIR` 指向独立目录，不碰 `~/Library/Application Support/MenuSSH`。
-- 使用单独的 UserDefaults，并强制关闭同步、面板在连接后不关、Dock 图标保持显示。
-- `MENUSH_APPEARANCE=light|dark` 固定外观。语言用启动参数 `-AppleLanguages`。
-- `MENUSH_FAKE_TERMINAL_LOG` 把将要执行的 argv 和启动命令写成一行 JSON，不跑 AppleScript、不打开 Terminal。
+- `SSHBOOKMARKS_DATA_DIR`（别名 `MENUSH_DATA_DIR`）指向独立目录，不碰 `~/Library/Application Support/SSH Bookmarks`，也不把用户的 `MenuSSH` 目录改名。
+- 使用单独的 UserDefaults，并强制关闭同步、面板在连接后不关、Dock 图标保持显示。不从 `com.shellwalker.MenuSSH` 抄偏好。
+- `SSHBOOKMARKS_APPEARANCE=light|dark`（别名 `MENUSH_APPEARANCE`）固定外观。语言用启动参数 `-AppleLanguages`。
+- `SSHBOOKMARKS_FAKE_TERMINAL_LOG`（别名 `MENUSH_FAKE_TERMINAL_LOG`）把将要执行的 argv 和启动命令写成一行 JSON，不跑 AppleScript、不打开 Terminal。
+- 升级迁移（Application Support 改名、UserDefaults 抄写、钥匙串 service 选择、iCloud 目录名保持 `MenuSSH`）在 `DataMigrationTests` 里用临时目录和临时 suite 覆盖。日志在 Application Support 的 `Logs/`，跟着文件夹一起搬。
 - 站点窗口保持接近生产尺寸（宽不超过 960、高不超过 580），不再为了测试把窗口拉满屏幕。编辑表单自己滚动，保存栏始终露在外面。面板窗口仍靠右，高度不变。
 
 没有这些变量时，正式行为不变。
@@ -39,7 +40,7 @@ GitHub runner 上点按 `MenuBarExtra` 不稳定，也不该依赖辅助功能�
 
 ## 编辑时的防护
 
-这些判断在 `MenuSSHCore` 有单测；确认框本身在 macOS 界面上。
+这些判断在 `SSHBookmarksCore` 有单测；确认框本身在 macOS 界面上。
 
 | 操作 | 行为 |
 | --- | --- |
@@ -104,7 +105,7 @@ Scripts/ci_ui_tests.sh
 ```bash
 Scripts/build_app.sh
 mkdir -p /tmp/menush-preview
-MENUSH_UI_TEST=1 MENUSH_DATA_DIR=/tmp/menush-preview \
-  MENUSH_APPEARANCE=light MENUSH_FAKE_TERMINAL_LOG=/tmp/menush-preview/terminal.log \
-  open build/MenuSSH.app
+SSHBOOKMARKS_UI_TEST=1 SSHBOOKMARKS_DATA_DIR=/tmp/menush-preview \
+  SSHBOOKMARKS_APPEARANCE=light SSHBOOKMARKS_FAKE_TERMINAL_LOG=/tmp/menush-preview/terminal.log \
+  open build/SSH Bookmarks.app
 ```

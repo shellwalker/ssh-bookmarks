@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 用 SwiftPM 构建 release 二进制，并组装成 build/MenuSSH.app。
+# 用 SwiftPM 构建 release 二进制，并组装成 build/SSH Bookmarks.app。
 #
 # 环境变量（均可选）：
 #   VERSION        CFBundleShortVersionString，默认取 git tag（去掉前缀 v），否则用 Info.plist 中的值
@@ -11,7 +11,8 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
-APP_NAME="MenuSSH"
+APP_NAME="SSH Bookmarks"
+PRODUCT="SSHBookmarks"
 ARCH="${ARCH:-arm64}"
 BUILD_DIR="$ROOT/build"
 APP="$BUILD_DIR/$APP_NAME.app"
@@ -32,13 +33,13 @@ case "$ARCH" in
 esac
 
 echo "==> swift build (release, $ARCH)"
-swift build -c release --product "$APP_NAME" "${ARCH_FLAGS[@]}"
-BIN_DIR="$(swift build -c release --product "$APP_NAME" "${ARCH_FLAGS[@]}" --show-bin-path)"
+swift build -c release --product "$PRODUCT" "${ARCH_FLAGS[@]}"
+BIN_DIR="$(swift build -c release --product "$PRODUCT" "${ARCH_FLAGS[@]}" --show-bin-path)"
 
 echo "==> assembling $APP"
 rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
-cp "$BIN_DIR/$APP_NAME" "$APP/Contents/MacOS/$APP_NAME"
+cp "$BIN_DIR/$PRODUCT" "$APP/Contents/MacOS/$PRODUCT"
 cp "$ROOT/Resources/Info.plist" "$APP/Contents/Info.plist"
 printf 'APPL????' > "$APP/Contents/PkgInfo"
 for lproj in "$ROOT"/Resources/*.lproj; do
@@ -68,7 +69,7 @@ for strings in "$APP"/Contents/Resources/*.lproj/*.strings; do
 done
 
 echo "==> codesign"
-ENTITLEMENTS="$ROOT/Resources/MenuSSH.entitlements"
+ENTITLEMENTS="$ROOT/Resources/SSHBookmarks.entitlements"
 if [[ -n "${SIGN_IDENTITY:-}" ]]; then
   codesign --force --options runtime --timestamp \
     --entitlements "$ENTITLEMENTS" --sign "$SIGN_IDENTITY" "$APP"

@@ -1,0 +1,122 @@
+import AppKit
+import SSHBookmarksCore
+
+enum TerminalLaunchError: LocalizedError {
+    case invalidHost(SSHCommandError)
+    case terminalNotInstalled(TerminalApp)
+    case automationDenied(TerminalApp)
+    case appleScript(String)
+    case process(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidHost(let e):
+            return e.message
+        case .terminalNotInstalled(let t):
+            return L10n.format("%@ is not installed.", t.displayName)
+        case .automationDenied(let t):
+            return L10n.format(
+                "SSH Bookmarks is not allowed to control %@. Enable it in System Settings › Privacy & Security › Automation.",
+                t.displayName)
+        case .appleScript(let message):
+            return message
+        case .process(let message):
+            return message
+        }
+    }
+}
+
+/// 把 TerminalLaunchPlanner 的计划在 macOS 上执行。
+@MainActor
+struct TerminalLauncher {
+    var sshPath: String
+    var terminal: TerminalApp
+    var openMode: TerminalOpenMode
+
+    static func isInstalled(_ terminal: TerminalApp) -> Bool {
+        NSWorkspace.shared.urlForApplication(withBundleIdentifier: terminal.bundleIdentifier) != nil
+    }
+
+    static func installedVersion(of terminal: TerminalApp) -> String? {
+        guard let url = NSWorkspace.shared.urlForApplication(withBundleIdentifier: terminal.bundleIdentifier),
+            let bundle = Bundle(url: url)
+        else { return nil }
+        return bundle.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String
+    }
+
+    /// 返回非 nil 表示首选终端没装，已经改用 `notice.used` 打开。不抛错，调用方做非阻塞提示。
+    /// 不修改用户保存的终端偏好。
+    @discardableResult
+    func launch(_ host: SSHHost) throws -> TerminalFallbackNotice? {
+        let builder = SSHCommandBuilder(sshPath: sshPath, homeDirectory: NSHomeDirectory())
+        let argv: [String]
+        let startup: String?
+        do {
+            argv = try builder.argv(for: host)
+            startup = try SSHCommandBuilder.startupCommand(host.startupCommand)
+        } catch let error as SSHCommandError {
+            throw TerminalLaunchError.invalidHost(error)
+        }
+        let command: [String]
+        if host.authMethod == .password {
+            command = try AskpassLaunch.commandArgv(host: host, sshArguments: Array(argv.dropFirst()), sshPath: sshPath) ?? argv
+        } else {
+            command = argv
+        }
+        return try launchArgv(command, startupCommand: startup)
+    }
+
+    /// 在用户的终端里输入一条命令（例如用户已确认的 ssh-copy-id）。不在本进程执行。
+    @discardableResult
+    func launchUserCommand(_ argv: [String]) throws -> TerminalFallbackNotice? {
+        try launchArgv(argv, startupCommand: nil)
+    }
+
+    private func launchArgv(_ argv: [String], startupCommand: String?) throws -> TerminalFallbackNotice? {
+        if let url = UITestLaunch.fakeTerminalLogURL {
+            try UITestLaunch.appendFakeTerminalLog(url: url, argv: argv, startup: startupCommand)
+            return nil
+        }
+        let installed = Set(TerminalApp.allCases.filter(Self.isInstalled))
+        let resolution = TerminalFallback.resolve(preferred: terminal, installed: installed)
+        let chosen = resolution.terminal
+        let plan = TerminalLaunchPlanner.plan(
+            terminal: chosen,
+            argv: argv,
+            mode: openMode,
+            ghosttyVersion: chosen == .ghostty ? Self.installedVersion(of: .ghostty) : nil,
+            startupCommand: startupCommand
+        )
+        try execute(plan, terminal: chosen)
+        return resolution.notice
+    }
+
+    private func execute(_ plan: TerminalLaunchPlan, terminal: TerminalApp) throws {
+        switch plan {
+        case .appleScript(let source):
+            // TODO(M1)：NSAppleScript 是同步调用，首次授权弹窗期间会阻塞主线程；
+            // 后续可改为后台串行队列 + NSAppleScript（需保证同一线程）或 NSUserAppleScriptTask。
+            guard let script = NSAppleScript(source: source) else {
+                throw TerminalLaunchError.appleScript("Failed to compile AppleScript")
+            }
+            var errorInfo: NSDictionary?
+            script.executeAndReturnError(&errorInfo)
+            if let errorInfo {
+                let code = errorInfo[NSAppleScript.errorNumber] as? Int ?? 0
+                // -1743 errAEEventNotPermitted：用户在“自动化”里拒绝了授权。
+                if code == -1743 { throw TerminalLaunchError.automationDenied(terminal) }
+                let message = errorInfo[NSAppleScript.errorMessage] as? String ?? "AppleScript error \(code)"
+                throw TerminalLaunchError.appleScript(message)
+            }
+        case .process(let executable, let arguments):
+            let process = Process()
+            process.executableURL = URL(fileURLWithPath: executable)
+            process.arguments = arguments
+            do {
+                try process.run()
+            } catch {
+                throw TerminalLaunchError.process(error.localizedDescription)
+            }
+        }
+    }
+}

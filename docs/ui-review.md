@@ -18,13 +18,13 @@
 `power` 在 HIG 里表示关机或电源，不表示退出这一个应用。菜单栏常驻工具更不该用它。
 
 - 之前：底栏电源图标，没有「退出」文案。
-- 现在：电源图标已去掉。底栏「更多」（`ellipsis.circle`，旁白标签「更多」）里是文字项「退出 MenuSSH」，快捷键 ⌘Q。App 菜单的终止命令组同样是「退出 MenuSSH」⌘Q。中文为「退出 MenuSSH」。
+- 现在：电源图标已去掉。底栏「更多」（`ellipsis.circle`，旁白标签「更多」）里是文字项「退出 SSH Bookmarks」，快捷键 ⌘Q。App 菜单的终止命令组同样是「退出 SSH Bookmarks」⌘Q。中文为「退出 SSH Bookmarks」。
 
 ## P1（已改）
 
 ### 3. 关于、设置、退出在面板和 App 菜单里都能找到
 
-「更多」菜单：关于 MenuSSH、设置…（⌘,）、分隔线、退出 MenuSSH（⌘Q）。App 菜单对应替换了 About、Settings、Quit 三个命令组。关于会把设置窗口切到「关于」页（`pendingSettingsPane`，窗口出现时消费并清空，不写入 UserDefaults）。
+「更多」菜单：关于 SSH Bookmarks、设置…（⌘,）、分隔线、退出 SSH Bookmarks（⌘Q）。App 菜单对应替换了 About、Settings、Quit 三个命令组。关于会把设置窗口切到「关于」页（`pendingSettingsPane`，窗口出现时消费并清空，不写入 UserDefaults）。
 
 站点主窗口工具栏增加了「设置」齿轮，打开同一设置窗口。工具栏按钮不再单独绑 ⌘,，避免和 App 菜单的 ⌘, 抢同一个快捷键。
 

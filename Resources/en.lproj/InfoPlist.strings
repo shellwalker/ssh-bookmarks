@@ -1,1 +1,1 @@
-"NSAppleEventsUsageDescription" = "MenuSSH needs to control your terminal app (Terminal, iTerm2 or Ghostty) to open SSH sessions.";
+"NSAppleEventsUsageDescription" = "SSH Bookmarks needs to control your terminal app (Terminal, iTerm2 or Ghostty) to open SSH sessions.";
