@@ -154,12 +154,7 @@ final class MenuSSHUITests: XCTestCase {
             XCTAssertTrue(app.dialogs.staticTexts["Discard unsaved changes?"].firstMatch.waitForExistence(timeout: 3))
         }
         shot(marked(app, id.editorCancel), "confirm-discard-en-light", screen: "editor", appearance: "light", language: "en")
-        let discardButton = app.buttons["Discard Changes"]
-        if discardButton.waitForExistence(timeout: 2) {
-            discardButton.click()
-        } else {
-            app.sheets.buttons["Discard Changes"].firstMatch.click()
-        }
+        clickDiscard(app)
 
         let hosts = marked(app, id.hosts)
         XCTAssertTrue(hosts.waitForExistence(timeout: 8))
@@ -174,7 +169,9 @@ final class MenuSSHUITests: XCTestCase {
         chooseMenu(app, identifier: id.hostDelete, titles: ["Delete…"])
         XCTAssertTrue(app.staticTexts["Delete this host?"].waitForExistence(timeout: 5))
         shot(row, "confirm-delete-en-light", screen: "hosts", appearance: "light", language: "en")
-        app.buttons["Cancel"].firstMatch.click()
+        let cancelDelete = app.buttons["Cancel"].firstMatch
+        XCTAssertTrue(cancelDelete.waitForExistence(timeout: 3))
+        cancelDelete.click()
         XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 3))
 
         row.rightClick()
@@ -183,11 +180,7 @@ final class MenuSSHUITests: XCTestCase {
         replace(marked(app, id.editorLabel), "changed")
         marked(app, id.editorCancel).click()
         XCTAssertTrue(app.staticTexts["Discard unsaved changes?"].waitForExistence(timeout: 5))
-        if app.buttons["Discard Changes"].exists {
-            app.buttons["Discard Changes"].click()
-        } else {
-            app.sheets.buttons["Discard Changes"].firstMatch.click()
-        }
+        clickDiscard(app)
         XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 5))
         app.terminate()
     }
@@ -280,6 +273,13 @@ final class MenuSSHUITests: XCTestCase {
         let sheet = app.sheets.firstMatch
         if sheet.waitForExistence(timeout: 2) { return sheet }
         return app.dialogs.firstMatch
+    }
+
+    /// 确认框的按钮经常在辅助功能树里出现两份，下标查询会因为不止一个匹配而失败。
+    private func clickDiscard(_ app: XCUIApplication) {
+        let button = app.buttons["Discard Changes"].firstMatch
+        XCTAssertTrue(button.waitForExistence(timeout: 4))
+        button.click()
     }
 
     private func click(_ element: XCUIElement, app: XCUIApplication) {

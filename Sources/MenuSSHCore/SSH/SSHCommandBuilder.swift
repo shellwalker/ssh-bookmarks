@@ -72,8 +72,9 @@ public struct SSHCommandBuilder: Sendable {
     /// 空字符串表示不追加。末尾换行会去掉；中间的控制字符仍拒绝，避免打断 AppleScript / shell。
     public static func startupCommand(_ raw: String) throws -> String? {
         var text = raw
-        while let last = text.last, last == "\n" || last == "\r" {
-            text.removeLast()
+        // `\r\n` 在 Swift 里是一个字素，按标量剥掉末尾换行。
+        while let last = text.unicodeScalars.last, last == "\n" || last == "\r" {
+            text.unicodeScalars.removeLast()
         }
         let trimmed = text.trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
         if trimmed.isEmpty { return nil }
