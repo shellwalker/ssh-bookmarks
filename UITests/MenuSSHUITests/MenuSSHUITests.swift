@@ -185,15 +185,16 @@ final class MenuSSHUITests: XCTestCase {
     private func reveal(_ element: XCUIElement, app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 8))
         var tries = 0
-        while tries < 8, !isComfortablyVisible(element, app: app) {
-            nudgeUp(app)
+        while tries < 6, !isComfortablyVisible(element, app: app) {
+            guard nudgeSheet(app) else { break }
             tries += 1
         }
     }
 
-    /// 编辑表单比窗口高，字段在屏幕外时点得到但拿不到键盘焦点。
+    /// 只有编辑表单会高出窗口。侧栏按钮贴着窗口底部，不能拿去滚。
     private func isComfortablyVisible(_ element: XCUIElement, app: XCUIApplication) -> Bool {
-        guard element.isHittable, element.frame.height > 1 else { return false }
+        guard element.isHittable, element.frame.height > 1, element.frame.minY.isFinite else { return false }
+        guard app.sheets.firstMatch.exists else { return true }
         return element.frame.midY < visibleBottom(app) - 30 && element.frame.minY > 50
     }
 
@@ -201,19 +202,24 @@ final class MenuSSHUITests: XCTestCase {
         var bottom: CGFloat = 0
         for index in 0..<app.windows.count {
             let frame = app.windows.element(boundBy: index).frame
-            if frame.height > 100 { bottom = max(bottom, frame.maxY) }
+            if frame.height > 100, frame.maxY.isFinite { bottom = max(bottom, frame.maxY) }
         }
         return bottom > 0 ? bottom : app.frame.maxY
     }
 
-    private func nudgeUp(_ app: XCUIApplication) {
-        let bottom = visibleBottom(app)
+    /// 在表单可见区域内向上拖。没有有效 sheet 时不制造坐标，避免 INFINITY。
+    private func nudgeSheet(_ app: XCUIApplication) -> Bool {
         let sheet = app.sheets.firstMatch
-        let x = sheet.exists ? sheet.frame.midX : app.frame.midX
+        let frame = sheet.frame
+        guard sheet.exists, frame.width > 1, frame.height > 1, frame.midX.isFinite, frame.minY.isFinite else { return false }
+        let bottom = min(frame.maxY, visibleBottom(app))
+        let top = max(frame.minY, 80)
+        guard bottom - top > 160, bottom.isFinite, top.isFinite else { return false }
         let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        let start = origin.withOffset(CGVector(dx: x, dy: bottom - 120))
-        let end = origin.withOffset(CGVector(dx: x, dy: bottom - 300))
+        let start = origin.withOffset(CGVector(dx: frame.midX, dy: bottom - 40))
+        let end = origin.withOffset(CGVector(dx: frame.midX, dy: top + 40))
         start.press(forDuration: 0.05, thenDragTo: end)
+        return true
     }
 
     private func ensureOn(_ toggle: XCUIElement, app: XCUIApplication) {
