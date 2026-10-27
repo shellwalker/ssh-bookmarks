@@ -120,6 +120,7 @@ enum UITestID {
     static let editorIdentity = "editor.identity"
     static let editorSave = "editor.save"
     static let editorCancel = "editor.cancel"
+    static let editorDiscard = "editor.discard"
     static let forwardKind = "forward.kind"
     static let forwardListen = "forward.listen"
     static let forwardDestinationHost = "forward.destinationHost"

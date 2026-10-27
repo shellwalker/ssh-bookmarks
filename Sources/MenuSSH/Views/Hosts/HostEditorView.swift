@@ -91,6 +91,7 @@ struct HostEditorView: View {
         }
         .alert("Discard unsaved changes?", isPresented: $showingDiscard) {
             Button("Discard Changes", role: .destructive) { dismiss() }
+                .accessibilityIdentifier(UITestID.editorDiscard)
             Button("Keep Editing", role: .cancel) {}
         } message: {
             Text("This host has changes that have not been saved.")

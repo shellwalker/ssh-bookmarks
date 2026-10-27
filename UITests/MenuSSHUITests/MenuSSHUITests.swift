@@ -154,7 +154,7 @@ final class MenuSSHUITests: XCTestCase {
             XCTAssertTrue(app.dialogs.staticTexts["Discard unsaved changes?"].firstMatch.waitForExistence(timeout: 3))
         }
         shot(marked(app, id.editorCancel), "confirm-discard-en-light", screen: "editor", appearance: "light", language: "en")
-        clickAlertButton(app, "Discard Changes", near: "Discard unsaved changes?")
+        clickAlertButton(app, "Discard Changes", identifier: id.editorDiscard, near: "Discard unsaved changes?")
 
         let hosts = marked(app, id.hosts)
         XCTAssertTrue(hosts.waitForExistence(timeout: 8))
@@ -169,7 +169,7 @@ final class MenuSSHUITests: XCTestCase {
         chooseMenu(app, identifier: id.hostDelete, titles: ["Delete…"])
         XCTAssertTrue(app.staticTexts["Delete this host?"].waitForExistence(timeout: 5))
         shot(row, "confirm-delete-en-light", screen: "hosts", appearance: "light", language: "en")
-        clickAlertButton(app, "Cancel", near: "Delete this host?")
+        clickAlertButton(app, "Cancel", identifier: nil, near: "Delete this host?")
         XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 3))
 
         row.rightClick()
@@ -178,7 +178,7 @@ final class MenuSSHUITests: XCTestCase {
         replace(marked(app, id.editorLabel), "changed")
         marked(app, id.editorCancel).click()
         XCTAssertTrue(app.staticTexts["Discard unsaved changes?"].waitForExistence(timeout: 5))
-        clickAlertButton(app, "Discard Changes", near: "Discard unsaved changes?")
+        clickAlertButton(app, "Discard Changes", identifier: id.editorDiscard, near: "Discard unsaved changes?")
         XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 5))
         app.terminate()
     }
@@ -273,12 +273,18 @@ final class MenuSSHUITests: XCTestCase {
         return app.dialogs.firstMatch
     }
 
-    /// `app.buttons` 的第一颗经常是 Touch Bar 镜像，直接 click 会失败。只点含有提示文案的 sheet/dialog/window。
-    private func clickAlertButton(_ app: XCUIApplication, _ title: String, near text: String) {
+    /// `app.buttons` 的第一颗经常是 Touch Bar 镜像，直接 click 会失败。
+    /// 下标查询会同时匹配 identifier / label / title，只比 label 会漏掉 SwiftUI alert。
+    private func clickAlertButton(_ app: XCUIApplication, _ title: String, identifier: String?, near text: String) {
         let deadline = Date().addingTimeInterval(6)
         while Date() < deadline {
-            if let button = alertButton(app, title: title, near: text) {
-                button.click()
+            let buttons = alertButtons(app, title: title, identifier: identifier, near: text)
+            if let button = buttons.first(where: { $0.isHittable }) ?? buttons.first {
+                if button.isHittable {
+                    button.click()
+                } else {
+                    button.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+                }
                 return
             }
             Thread.sleep(forTimeInterval: 0.2)
@@ -286,38 +292,57 @@ final class MenuSSHUITests: XCTestCase {
         XCTFail("on-screen alert button not found: \(title)")
     }
 
-    private func alertButton(_ app: XCUIApplication, title: String, near text: String) -> XCUIElement? {
+    private func alertButtons(_ app: XCUIApplication, title: String, identifier: String?, near text: String) -> [XCUIElement] {
+        let blocked = touchBarDescriptions(app)
+        var found: [XCUIElement] = []
+        func consider(_ button: XCUIElement) {
+            guard button.exists, !blocked.contains(button.debugDescription) else { return }
+            let frame = button.frame
+            guard frame.width > 1, frame.height > 1, frame.minX.isFinite, frame.minY.isFinite else { return }
+            found.append(button)
+        }
         for container in alertContainers(app, containing: text) {
-            let matches = container.descendants(matching: .button).matching(NSPredicate(format: "label == %@", title))
-            for index in 0..<matches.count {
-                let button = matches.element(boundBy: index)
-                guard button.exists, button.isHittable, !isTouchBarElement(button, app: app) else { continue }
-                return button
+            if let identifier {
+                let identified = container.descendants(matching: .button).matching(identifier: identifier)
+                for index in 0..<identified.count { consider(identified.element(boundBy: index)) }
+            }
+            let titled = container.descendants(matching: .button).matching(identifier: title)
+            for index in 0..<titled.count { consider(titled.element(boundBy: index)) }
+        }
+        if found.isEmpty {
+            for query in [app.sheets.buttons, app.dialogs.buttons, app.windows.buttons] {
+                if let identifier {
+                    let identified = query.matching(identifier: identifier)
+                    for index in 0..<identified.count { consider(identified.element(boundBy: index)) }
+                }
+                let titled = query.matching(identifier: title)
+                for index in 0..<titled.count { consider(titled.element(boundBy: index)) }
             }
         }
-        return nil
+        return found
     }
 
     private func alertContainers(_ app: XCUIApplication, containing text: String) -> [XCUIElement] {
         var found: [XCUIElement] = []
         for query in [app.sheets, app.dialogs, app.windows] {
             for element in query.allElementsBoundByIndex where element.exists {
-                let message = element.staticTexts.matching(NSPredicate(format: "label == %@", text)).firstMatch
+                let message = element.staticTexts
+                    .matching(identifier: text)
+                    .firstMatch
                 if message.exists { found.append(element) }
             }
         }
         return found
     }
 
-    private func isTouchBarElement(_ element: XCUIElement, app: XCUIApplication) -> Bool {
-        let note = element.debugDescription.lowercased()
-        if note.contains("touch bar") || note.contains("touchbar") { return true }
-        let frame = element.frame
-        for bar in app.touchBars.allElementsBoundByIndex where bar.exists {
-            let barFrame = bar.frame
-            if barFrame.width > 1, barFrame.intersects(frame) { return true }
+    private func touchBarDescriptions(_ app: XCUIApplication) -> Set<String> {
+        var notes: Set<String> = []
+        let buttons = app.touchBars.descendants(matching: .button)
+        for index in 0..<buttons.count {
+            let button = buttons.element(boundBy: index)
+            if button.exists { notes.insert(button.debugDescription) }
         }
-        return false
+        return notes
     }
 
     private func click(_ element: XCUIElement, app: XCUIApplication) {
@@ -585,6 +610,7 @@ private enum id {
     static let editorKeyPicker = "editor.keyPicker"
     static let editorSave = "editor.save"
     static let editorCancel = "editor.cancel"
+    static let editorDiscard = "editor.discard"
     static let forwardKind = "forward.kind"
     static let forwardListen = "forward.listen"
     static let forwardDestinationHost = "forward.destinationHost"
