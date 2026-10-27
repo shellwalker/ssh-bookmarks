@@ -57,7 +57,7 @@ final class TerminalLaunchPlannerTests: XCTestCase {
         let plan = TerminalLaunchPlanner.plan(
             terminal: .terminal, argv: argv, mode: .newWindow, startupCommand: "cd /app && tmux attach")
         guard case .appleScript(let src) = plan else { return XCTFail("expected AppleScript") }
-        XCTAssertTrue(src.contains("/usr/bin/ssh -l 'o'\\''brien' -- h\\ncd /app && tmux attach"))
+        XCTAssertTrue(src.contains("/usr/bin/ssh -l 'o'\\\\''brien' -- h\\ncd /app && tmux attach"))
     }
 
     func testStartupCommandEscapesQuotesAndBackslashes() {
