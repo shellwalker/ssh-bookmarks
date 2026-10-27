@@ -50,8 +50,10 @@ struct TerminalLauncher {
     func launch(_ host: SSHHost) throws -> TerminalFallbackNotice? {
         let builder = SSHCommandBuilder(sshPath: sshPath, homeDirectory: NSHomeDirectory())
         let argv: [String]
+        let startup: String?
         do {
             argv = try builder.argv(for: host)
+            startup = try SSHCommandBuilder.startupCommand(host.startupCommand)
         } catch let error as SSHCommandError {
             throw TerminalLaunchError.invalidHost(error)
         }
@@ -61,16 +63,16 @@ struct TerminalLauncher {
         } else {
             command = argv
         }
-        return try launchArgv(command)
+        return try launchArgv(command, startupCommand: startup)
     }
 
     /// 在用户的终端里输入一条命令（例如用户已确认的 ssh-copy-id）。不在本进程执行。
     @discardableResult
     func launchUserCommand(_ argv: [String]) throws -> TerminalFallbackNotice? {
-        try launchArgv(argv)
+        try launchArgv(argv, startupCommand: nil)
     }
 
-    private func launchArgv(_ argv: [String]) throws -> TerminalFallbackNotice? {
+    private func launchArgv(_ argv: [String], startupCommand: String?) throws -> TerminalFallbackNotice? {
         let installed = Set(TerminalApp.allCases.filter(Self.isInstalled))
         let resolution = TerminalFallback.resolve(preferred: terminal, installed: installed)
         let chosen = resolution.terminal
@@ -78,7 +80,8 @@ struct TerminalLauncher {
             terminal: chosen,
             argv: argv,
             mode: openMode,
-            ghosttyVersion: chosen == .ghostty ? Self.installedVersion(of: .ghostty) : nil
+            ghosttyVersion: chosen == .ghostty ? Self.installedVersion(of: .ghostty) : nil,
+            startupCommand: startupCommand
         )
         try execute(plan, terminal: chosen)
         return resolution.notice

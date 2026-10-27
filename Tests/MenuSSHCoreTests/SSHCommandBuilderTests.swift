@@ -80,6 +80,50 @@ final class SSHCommandBuilderTests: XCTestCase {
         XCTAssertEqual(try builder.arguments(for: SSHHost(label: "v6", hostname: "fe80::1%en0")), ["--", "fe80::1%en0"])
     }
 
+    func testForwardAgentPrecedesExtraOptions() throws {
+        var host = SSHHost(
+            label: "a",
+            hostname: "h",
+            extraOptions: [SSHOption(key: "ForwardAgent", value: "no")],
+            forwardAgent: true
+        )
+        let args = try builder.arguments(for: host)
+        let enabled = try XCTUnwrap(args.firstIndex(of: "ForwardAgent=yes"))
+        let overridden = try XCTUnwrap(args.firstIndex(of: "ForwardAgent=no"))
+        XCTAssertLessThan(enabled, overridden)
+        host.forwardAgent = false
+        XCTAssertFalse(try builder.arguments(for: host).contains("ForwardAgent=yes"))
+    }
+
+    func testRemoteForward() throws {
+        let host = SSHHost(
+            label: "a",
+            hostname: "h",
+            portForwards: [
+                PortForward(kind: .remote, bindAddress: "127.0.0.1", listenPort: 9000, destinationHost: "10.0.0.2", destinationPort: 80)
+            ]
+        )
+        XCTAssertEqual(try builder.arguments(for: host), ["-R", "127.0.0.1:9000:10.0.0.2:80", "--", "h"])
+    }
+
+    func testStartupCommandWhitelist() throws {
+        XCTAssertNil(try SSHCommandBuilder.startupCommand("   "))
+        XCTAssertEqual(try SSHCommandBuilder.startupCommand(" cd /app && tmux attach "), "cd /app && tmux attach")
+        XCTAssertThrowsError(try builder.argv(for: SSHHost(label: "x", hostname: "h", startupCommand: "id\nwhoami")))
+        XCTAssertThrowsError(try SSHCommandBuilder.startupCommand(String(repeating: "a", count: 501)))
+        let host = SSHHost(label: "x", hostname: "h", startupCommand: "cd /app && tmux attach")
+        XCTAssertEqual(try builder.arguments(for: host), ["--", "h"])
+    }
+
+    func testJumpHostSpecification() {
+        let host = SSHHost(label: "edge", hostname: "edge.example", port: 22, username: "deploy")
+        XCTAssertEqual(JumpHostSpec.specification(for: host), "deploy@edge.example:22")
+        let v6 = SSHHost(label: "v6", hostname: "fe80::1%en0", username: "root")
+        XCTAssertEqual(JumpHostSpec.specification(for: v6), "root@[fe80::1%en0]")
+        XCTAssertNil(JumpHostSpec.specification(for: SSHHost(label: "bad", hostname: "-oProxyCommand=x")))
+        XCTAssertNil(JumpHostSpec.specification(for: SSHHost(label: "bad", hostname: "h", username: "a b")))
+    }
+
     func testCommandLineQuotesUnsafeValues() throws {
         let host = SSHHost(label: "q", hostname: "h", username: "deploy", authMethod: .publicKey, identityFile: "/Users/me/O'Brien Keys/id")
         let line = try builder.commandLine(for: host)

@@ -62,6 +62,7 @@ extension HostSection {
     /// 内置分区标题走本地化；用户自定义分组名原样显示。
     var title: Text {
         switch kind {
+        case .recent: return Text("Recent")
         case .favorites: return Text("Favorites")
         case .group(let g): return Text(verbatim: g.name)
         case .ungrouped: return Text("Ungrouped")

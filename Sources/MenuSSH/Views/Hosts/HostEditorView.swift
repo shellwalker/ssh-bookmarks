@@ -14,19 +14,22 @@ struct HostEditorView: View {
     @State private var errorField: HostField?
     @State private var discoveredKeys: [PublicKeyCandidate] = []
     @State private var showingCopyConfirm = false
+    @State private var forwardDraft: PortForward?
 
     @EnvironmentObject private var settings: SettingsStore
 
-    let groups: [HostGroup]
+    let outline: [GroupOutlineEntry]
+    let otherHosts: [SSHHost]
     let onSave: (SSHHost) -> Void
 
     private let keychain = KeychainService()
 
-    init(host: SSHHost, groups: [HostGroup], onSave: @escaping (SSHHost) -> Void) {
+    init(host: SSHHost, outline: [GroupOutlineEntry], otherHosts: [SSHHost], onSave: @escaping (SSHHost) -> Void) {
         _draft = State(initialValue: host)
         _portText = State(initialValue: host.port.map(String.init) ?? "")
         _tagsText = State(initialValue: HostInputParser.formatTags(host.tags))
-        self.groups = groups
+        self.outline = outline
+        self.otherHosts = otherHosts
         self.onSave = onSave
     }
 
@@ -43,8 +46,9 @@ struct HostEditorView: View {
                         .foregroundStyle(errorField == .username ? Color.red : Color.primary)
                     Picker("Group", selection: $draft.groupID) {
                         Text("None").tag(UUID?.none)
-                        ForEach(groups) { group in
-                            Text(verbatim: group.name).tag(UUID?.some(group.id))
+                        ForEach(outline) { entry in
+                            Text(verbatim: String(repeating: "  ", count: entry.depth) + entry.group.name)
+                                .tag(UUID?.some(entry.group.id))
                         }
                     }
                     TextField("Tags", text: $tagsText, prompt: Text("prod, db"))
@@ -81,9 +85,38 @@ struct HostEditorView: View {
                         text: Binding(
                             get: { draft.jumpHost ?? "" },
                             set: { draft.jumpHost = $0.isEmpty ? nil : $0 }
-                        ), prompt: Text(verbatim: "user@bastion:22")
+                        ), prompt: Text(verbatim: "user@bastion:22,edge")
                     )
                     .foregroundStyle(errorField == .jumpHost ? Color.red : Color.primary)
+                    Text("Comma-separated hops, nearest first. Example: user@bastion:22,edge")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    if !otherHosts.isEmpty {
+                        Menu("Use Host as Jump") {
+                            ForEach(otherHosts) { other in
+                                Button {
+                                    applyJump(from: other)
+                                } label: {
+                                    Text(verbatim: other.label)
+                                }
+                                .disabled(JumpHostSpec.specification(for: other) == nil)
+                            }
+                        }
+                    }
+                    TextField(
+                        "Startup Command",
+                        text: $draft.startupCommand,
+                        prompt: Text(verbatim: "cd /app && tmux attach")
+                    )
+                    .foregroundStyle(errorField == .startupCommand ? Color.red : Color.primary)
+                    Text("One line typed after the ssh command. Control characters are rejected.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    Toggle("Agent Forwarding", isOn: $draft.forwardAgent)
+                    Text("Adds -o ForwardAgent=yes so the remote host can use your local agent.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    portForwards
                     TextField("Notes", text: $draft.notes, axis: .vertical)
                         .lineLimit(2...4)
                 }
@@ -107,7 +140,16 @@ struct HostEditorView: View {
             }
             .padding(12)
         }
-        .frame(width: 480, height: 560)
+        .frame(width: 520, height: 680)
+        .sheet(item: $forwardDraft) { forward in
+            PortForwardEditor(forward: forward) { saved in
+                if let index = draft.portForwards.firstIndex(where: { $0.id == saved.id }) {
+                    draft.portForwards[index] = saved
+                } else {
+                    draft.portForwards.append(saved)
+                }
+            }
+        }
         .onAppear(perform: preparePublicKeyDefault)
         .alert("Install the public key?", isPresented: $showingCopyConfirm) {
             Button("Open Terminal", action: installPublicKey)
@@ -120,6 +162,40 @@ struct HostEditorView: View {
                 """
             )
         }
+    }
+
+    private var portForwards: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Port Forwarding")
+                .font(.callout)
+            if draft.portForwards.isEmpty {
+                Text("No port forwards")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(draft.portForwards) { forward in
+                HStack {
+                    Text(verbatim: forward.editorSummary)
+                        .font(.system(.body, design: .monospaced))
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Button("Edit…") { forwardDraft = forward }
+                    Button("Delete", role: .destructive) {
+                        draft.portForwards.removeAll { $0.id == forward.id }
+                    }
+                }
+            }
+            Button("Add Forward") {
+                forwardDraft = PortForward(
+                    kind: .local, listenPort: 8080, destinationHost: "127.0.0.1", destinationPort: 80)
+            }
+        }
+    }
+
+    private func applyJump(from host: SSHHost) {
+        guard let spec = JumpHostSpec.specification(for: host) else { return }
+        let current = (draft.jumpHost ?? "").trimmingCharacters(in: .whitespaces)
+        draft.jumpHost = current.isEmpty ? spec : current + "," + spec
     }
 
     @ViewBuilder
@@ -228,6 +304,20 @@ struct HostEditorView: View {
         }
 
         do {
+            if let startup = try SSHCommandBuilder.startupCommand(host.startupCommand) {
+                host.startupCommand = startup
+            } else {
+                host.startupCommand = ""
+            }
+        } catch let error as SSHCommandError {
+            fail(error.message, field: error.field)
+            return
+        } catch {
+            fail(error.localizedDescription, field: .startupCommand)
+            return
+        }
+
+        do {
             host.port = try HostInputParser.parsePort(portText)
         } catch let error as HostInputParser.PortError {
             fail(error.message, field: .port)
@@ -263,5 +353,106 @@ struct HostEditorView: View {
     private func fail(_ message: String, field: HostField?) {
         validationError = message
         errorField = field
+    }
+}
+
+private struct PortForwardEditor: View {
+    @Environment(\.dismiss) private var dismiss
+    @State private var kind: PortForward.Kind
+    @State private var bindAddress: String
+    @State private var listenPort: String
+    @State private var destinationHost: String
+    @State private var destinationPort: String
+    @State private var error: String?
+    private let originalID: UUID
+    private let onSave: (PortForward) -> Void
+
+    init(forward: PortForward, onSave: @escaping (PortForward) -> Void) {
+        _kind = State(initialValue: forward.kind)
+        _bindAddress = State(initialValue: forward.bindAddress ?? "")
+        _listenPort = State(initialValue: String(forward.listenPort))
+        _destinationHost = State(initialValue: forward.destinationHost ?? "")
+        _destinationPort = State(initialValue: forward.destinationPort.map(String.init) ?? "")
+        originalID = forward.id
+        self.onSave = onSave
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Form {
+                Section("Port Forwarding") {
+                    Picker("Kind", selection: $kind) {
+                        Text("Local").tag(PortForward.Kind.local)
+                        Text("Remote").tag(PortForward.Kind.remote)
+                        Text("Dynamic").tag(PortForward.Kind.dynamic)
+                    }
+                    TextField("Bind Address", text: $bindAddress, prompt: Text(verbatim: "127.0.0.1"))
+                    TextField("Listen Port", text: $listenPort, prompt: Text(verbatim: "8080"))
+                    if kind != .dynamic {
+                        TextField("Destination Host", text: $destinationHost, prompt: Text(verbatim: "127.0.0.1"))
+                        TextField("Destination Port", text: $destinationPort, prompt: Text(verbatim: "80"))
+                    }
+                }
+            }
+            .formStyle(.grouped)
+            Divider()
+            HStack {
+                if let error {
+                    Text(verbatim: error)
+                        .foregroundStyle(.red)
+                        .font(.callout)
+                }
+                Spacer()
+                Button("Cancel") { dismiss() }
+                    .keyboardShortcut(.cancelAction)
+                Button("Save", action: save)
+                    .keyboardShortcut(.defaultAction)
+            }
+            .padding(12)
+        }
+        .frame(width: 420, height: 320)
+    }
+
+    private func save() {
+        let listen = Int(listenPort.trimmingCharacters(in: .whitespaces)) ?? 0
+        let destPort = Int(destinationPort.trimmingCharacters(in: .whitespaces))
+        let bind = bindAddress.trimmingCharacters(in: .whitespaces)
+        let destHost = destinationHost.trimmingCharacters(in: .whitespaces)
+        let forward = PortForward(
+            id: originalID,
+            kind: kind,
+            bindAddress: bind.isEmpty ? nil : bind,
+            listenPort: listen,
+            destinationHost: kind == .dynamic || destHost.isEmpty ? nil : destHost,
+            destinationPort: kind == .dynamic ? nil : destPort
+        )
+        let probe = SSHHost(label: "probe", hostname: "example.com", portForwards: [forward])
+        do {
+            _ = try SSHCommandBuilder().argv(for: probe)
+        } catch let commandError as SSHCommandError {
+            error = commandError.message
+            return
+        } catch {
+            self.error = error.localizedDescription
+            return
+        }
+        onSave(forward)
+        dismiss()
+    }
+}
+
+extension PortForward {
+    var editorSummary: String {
+        let bind = bindAddress.map { "\($0):" } ?? ""
+        switch kind {
+        case .dynamic:
+            return "D \(bind)\(listenPort)"
+        case .local:
+            let dest = "\(destinationHost ?? ""):\(destinationPort.map(String.init) ?? "")"
+            return "L \(bind)\(listenPort):\(dest)"
+        case .remote:
+            let dest = "\(destinationHost ?? ""):\(destinationPort.map(String.init) ?? "")"
+            return "R \(bind)\(listenPort):\(dest)"
+        }
     }
 }

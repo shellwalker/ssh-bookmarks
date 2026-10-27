@@ -27,24 +27,148 @@ public struct SSHConfigEntry: Equatable, Sendable {
 /// - 只处理 `Host` 块；`Match` 块整体跳过。
 /// - 带通配符（`*`、`?`、`!`）的模式不导入。
 /// - 一行多个别名（`Host a b`）会生成多个条目。
-/// - `Include` 暂不展开（M3 再做）。
+/// - `Include` 按 OpenSSH：相对路径相对 `~/.ssh`，支持 `~` 和最后一段的 `*` / `?`。
 /// - 同一关键字以第一次出现为准（与 ssh 语义一致）。
 public enum SSHConfigParser {
-    public static func parse(_ text: String) -> [SSHConfigEntry] {
-        var entries: [SSHConfigEntry] = []
-        var current: [SSHConfigEntry] = []
-        var inMatch = false
+    public static let maxIncludeDepth = 8
 
-        func flush() {
-            entries.append(contentsOf: current)
-            current = []
+    public static func parse(_ text: String) -> [SSHConfigEntry] {
+        parse(text, homeDirectory: "", readFile: nil, listDirectory: nil)
+    }
+
+    /// `readFile` 收到绝对路径。`listDirectory` 用于展开通配。两者缺一则跳过 Include，不报错。
+    public static func parse(
+        _ text: String,
+        homeDirectory: String,
+        readFile: ((String) -> String?)?,
+        listDirectory: ((String) -> [String])?
+    ) -> [SSHConfigEntry] {
+        let state = ParseState()
+        state.consume(
+            text: text,
+            origin: nil,
+            homeDirectory: homeDirectory,
+            readFile: readFile,
+            listDirectory: listDirectory
+        )
+        state.flush()
+        return state.entries
+    }
+
+    /// hostname 仍用别名，这样未导入的 config 选项继续由 ssh 自己应用。
+    /// User / Port / IdentityFile / ProxyJump 写入对应字段；HostName 只留在备注里。
+    public static func makeHosts(from entries: [SSHConfigEntry], groupID: UUID? = nil) -> [SSHHost] {
+        entries.map { entry in
+            let user = entry.user.flatMap { SSHCommandBuilder.isValidUsername($0) ? $0 : nil } ?? ""
+            let port = entry.port.flatMap { (1...65535).contains($0) ? $0 : nil }
+            let identity = entry.identityFile.flatMap { SSHCommandBuilder.isValidPath($0) ? $0 : nil }
+            let jump = entry.proxyJump.flatMap { SSHCommandBuilder.isValidJumpSpec($0) ? $0 : nil }
+            let notes = entry.hostName.map { "HostName \($0)" } ?? ""
+            return SSHHost(
+                label: entry.alias,
+                hostname: entry.alias,
+                port: port,
+                username: user,
+                groupID: groupID,
+                tags: ["ssh-config"],
+                authMethod: identity == nil ? .automatic : .publicKey,
+                identityFile: identity,
+                jumpHost: jump,
+                notes: notes
+            )
+        }
+    }
+
+    /// 把一条 Include token 解析成绝对路径。通配只作用在最后一段。
+    public static func resolveInclude(token: String, homeDirectory: String, listDirectory: (String) -> [String]) -> [String] {
+        let raw = SSHConfigParserSplit.unquote(token)
+        guard !raw.isEmpty else { return [] }
+        var path = raw
+        if path == "~" {
+            path = homeDirectory
+        } else if path.hasPrefix("~/") {
+            path = homeDirectory + String(path.dropFirst(1))
+        } else if !path.hasPrefix("/") {
+            guard !homeDirectory.isEmpty else { return [] }
+            path = homeDirectory + "/.ssh/" + path
+        }
+        let url = URL(fileURLWithPath: path)
+        let name = url.lastPathComponent
+        guard name.contains("*") || name.contains("?") else { return [path] }
+        let directory = url.deletingLastPathComponent().path
+        return
+            listDirectory(directory)
+            .filter { globMatch(pattern: name, name: $0) }
+            .sorted()
+            .map { directory + "/" + $0 }
+    }
+
+    /// `*` / `?`。星号不匹配开头的点，除非模式自己以点开头。
+    static func globMatch(pattern: String, name: String) -> Bool {
+        if name.hasPrefix("."), !pattern.hasPrefix(".") { return false }
+        return glob(pattern: Array(pattern), name: Array(name))
+    }
+
+    private static func glob(pattern: [Character], name: [Character]) -> Bool {
+        var pi = 0
+        var ni = 0
+        var star = -1
+        var mark = -1
+        while ni < name.count {
+            if pi < pattern.count, (pattern[pi] == name[ni] || pattern[pi] == "?") {
+                pi += 1
+                ni += 1
+            } else if pi < pattern.count, pattern[pi] == "*" {
+                star = pi
+                mark = ni
+                pi += 1
+            } else if star >= 0 {
+                pi = star + 1
+                mark += 1
+                ni = mark
+            } else {
+                return false
+            }
+        }
+        while pi < pattern.count, pattern[pi] == "*" { pi += 1 }
+        return pi == pattern.count
+    }
+
+}
+
+private final class ParseState {
+    var entries: [SSHConfigEntry] = []
+    var current: [SSHConfigEntry] = []
+    var inMatch = false
+    var visiting: Set<String> = []
+    var depth = 0
+
+    func flush() {
+        entries.append(contentsOf: current)
+        current = []
+    }
+
+    func consume(
+        text: String,
+        origin: String?,
+        homeDirectory: String,
+        readFile: ((String) -> String?)?,
+        listDirectory: ((String) -> [String])?
+    ) {
+        if let origin {
+            if visiting.contains(origin) || depth >= SSHConfigParser.maxIncludeDepth { return }
+            visiting.insert(origin)
+        }
+        depth += 1
+        defer {
+            depth -= 1
+            if let origin { visiting.remove(origin) }
         }
 
         for rawLine in text.components(separatedBy: .newlines) {
             let line = rawLine.trimmingCharacters(in: .whitespaces)
             if line.isEmpty || line.hasPrefix("#") { continue }
-
-            let (keyword, value) = splitKeyword(line)
+            let (keyword, value) = SSHConfigParserSplit.split(line)
             guard !keyword.isEmpty else { continue }
 
             switch keyword {
@@ -54,48 +178,47 @@ public enum SSHConfigParser {
                 let patterns = value.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
                 current =
                     patterns
-                    .filter { p in !p.contains("*") && !p.contains("?") && !p.hasPrefix("!") }
-                    .map { SSHConfigEntry(alias: unquote($0)) }
+                    .filter { pattern in !pattern.contains("*") && !pattern.contains("?") && !pattern.hasPrefix("!") }
+                    .map { SSHConfigEntry(alias: SSHConfigParserSplit.unquote($0)) }
             case "match":
                 flush()
                 inMatch = true
+            case "include":
+                guard !inMatch, let readFile, let listDirectory else { continue }
+                let tokens = value.split(whereSeparator: { $0 == " " || $0 == "\t" }).map(String.init)
+                for token in tokens {
+                    let paths = SSHConfigParser.resolveInclude(token: token, homeDirectory: homeDirectory, listDirectory: listDirectory)
+                    for path in paths {
+                        guard let body = readFile(path) else { continue }
+                        consume(
+                            text: body,
+                            origin: path,
+                            homeDirectory: homeDirectory,
+                            readFile: readFile,
+                            listDirectory: listDirectory
+                        )
+                    }
+                }
             default:
                 guard !inMatch, !current.isEmpty else { continue }
-                let v = unquote(value)
-                for i in current.indices {
+                let cleaned = SSHConfigParserSplit.unquote(value)
+                for index in current.indices {
                     switch keyword {
-                    case "hostname": if current[i].hostName == nil { current[i].hostName = v }
-                    case "user": if current[i].user == nil { current[i].user = v }
-                    case "port": if current[i].port == nil { current[i].port = Int(v) }
-                    case "identityfile": if current[i].identityFile == nil { current[i].identityFile = v }
-                    case "proxyjump": if current[i].proxyJump == nil { current[i].proxyJump = v }
+                    case "hostname": if current[index].hostName == nil { current[index].hostName = cleaned }
+                    case "user": if current[index].user == nil { current[index].user = cleaned }
+                    case "port": if current[index].port == nil { current[index].port = Int(cleaned) }
+                    case "identityfile": if current[index].identityFile == nil { current[index].identityFile = cleaned }
+                    case "proxyjump": if current[index].proxyJump == nil { current[index].proxyJump = cleaned }
                     default: break
                     }
                 }
             }
         }
-        flush()
-        return entries
     }
+}
 
-    /// 转为 SSHHost。hostname 使用别名，这样连接时仍会应用 ~/.ssh/config 中的其他选项；
-    /// 其余字段只作展示用途，保持 nil/空，交给 ssh_config 决定。
-    public static func makeHosts(from entries: [SSHConfigEntry], groupID: UUID? = nil) -> [SSHHost] {
-        entries.map { e in
-            SSHHost(
-                label: e.alias,
-                hostname: e.alias,
-                groupID: groupID,
-                tags: ["ssh-config"],
-                notes: [e.user.map { "User \($0)" }, e.hostName.map { "HostName \($0)" }, e.port.map { "Port \($0)" }]
-                    .compactMap { $0 }
-                    .joined(separator: ", ")
-            )
-        }
-    }
-
-    /// 支持 `Key Value` 和 `Key=Value` 两种写法。
-    private static func splitKeyword(_ line: String) -> (String, String) {
+private enum SSHConfigParserSplit {
+    static func split(_ line: String) -> (String, String) {
         guard let sepIndex = line.firstIndex(where: { $0 == " " || $0 == "\t" || $0 == "=" }) else {
             return (line.lowercased(), "")
         }
@@ -105,7 +228,7 @@ public enum SSHConfigParser {
         return (key, String(rest).trimmingCharacters(in: .whitespaces))
     }
 
-    private static func unquote(_ s: String) -> String {
+    static func unquote(_ s: String) -> String {
         if s.count >= 2, s.hasPrefix("\""), s.hasSuffix("\"") {
             return String(s.dropFirst().dropLast())
         }

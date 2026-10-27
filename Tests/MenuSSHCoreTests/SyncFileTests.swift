@@ -49,6 +49,24 @@ final class SyncFileTests: XCTestCase {
         XCTAssertNil(decoded.hosts.first?.identityFile?.contains("password") == true ? "x" : nil)
     }
 
+    func testSchemaOneDefaultsNewFieldsAndEncodeWritesCurrentSchema() throws {
+        let id = "6F9619FF-8B86-D011-B42D-00C04FC964FF"
+        let json = """
+            {"schemaVersion":1,"deviceId":"d","groups":[],"hosts":[{"id":"\(id)","hostname":"h","label":"h"}],"tombstones":[]}
+            """
+        let decoded = try SyncCodec.decode(Data(json.utf8))
+        XCTAssertEqual(decoded.schemaVersion, 1)
+        XCTAssertEqual(decoded.hosts.first?.forwardAgent, false)
+        XCTAssertEqual(decoded.hosts.first?.startupCommand, "")
+        let encoded = try SyncCodec.encode(decoded)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: encoded) as? [String: Any])
+        XCTAssertEqual(object["schemaVersion"] as? Int, SyncDocument.currentSchemaVersion)
+        let keys = SyncSecretScan.keys(in: try JSONSerialization.jsonObject(with: encoded))
+        XCTAssertTrue(keys.contains("forwardagent"))
+        XCTAssertTrue(keys.contains("startupcommand"))
+        XCTAssertTrue(keys.isDisjoint(with: SyncSecretScan.forbiddenKeys))
+    }
+
     func testNewerSchemaIsRefused() {
         let json = #"{"schemaVersion":9,"deviceId":"x","groups":[],"hosts":[],"tombstones":[]}"#
         XCTAssertThrowsError(try SyncCodec.decode(Data(json.utf8))) { error in

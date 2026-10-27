@@ -9,6 +9,7 @@ public enum SSHCommandError: Error, Equatable, Sendable {
     case invalidJumpHost(String)
     case invalidOption(String)
     case invalidPortForward(String)
+    case invalidStartupCommand(String)
     case invalidSSHPath(String)
 
     /// 出错的字段，便于编辑器把错误显示在对应输入框旁边。
@@ -21,6 +22,7 @@ public enum SSHCommandError: Error, Equatable, Sendable {
         case .invalidJumpHost: return .jumpHost
         case .invalidOption: return .extraOptions
         case .invalidPortForward: return .portForwards
+        case .invalidStartupCommand: return .startupCommand
         case .invalidSSHPath: return .sshPath
         }
     }
@@ -28,7 +30,7 @@ public enum SSHCommandError: Error, Equatable, Sendable {
 
 /// 站点中可被校验的字段。
 public enum HostField: String, Sendable, CaseIterable {
-    case hostname, username, port, identityFile, jumpHost, extraOptions, portForwards, sshPath
+    case hostname, username, port, identityFile, jumpHost, extraOptions, portForwards, startupCommand, sshPath
 }
 
 /// 把 SSHHost 转成 ssh 的 argv（不经过 shell）。
@@ -47,9 +49,20 @@ public struct SSHCommandBuilder: Sendable {
         self.homeDirectory = homeDirectory
     }
 
-    /// 完整 argv，第一个元素是 ssh 可执行文件路径。
+    /// 完整 argv，第一个元素是 ssh 可执行文件路径。同时校验连接后命令。
     public func argv(for host: SSHHost) throws -> [String] {
-        [sshPath] + (try arguments(for: host))
+        _ = try Self.startupCommand(host.startupCommand)
+        return [sshPath] + (try arguments(for: host))
+    }
+
+    /// 空字符串表示不追加。非空必须是单行，且不能含控制字符，避免打断 AppleScript / shell。
+    public static func startupCommand(_ raw: String) throws -> String? {
+        let trimmed = raw.trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
+        if trimmed.isEmpty { return nil }
+        guard trimmed.utf8.count <= 500, !trimmed.containsControlCharacters else {
+            throw SSHCommandError.invalidStartupCommand(raw)
+        }
+        return trimmed
     }
 
     /// ssh 之后的参数。
@@ -88,6 +101,11 @@ public struct SSHCommandBuilder: Sendable {
 
         for forward in host.portForwards {
             args += try forwardArguments(forward)
+        }
+
+        if host.forwardAgent {
+            // 放在用户额外选项之前：OpenSSH 采用第一次出现的值，开关优先。
+            args += ["-o", "ForwardAgent=yes"]
         }
 
         for option in host.extraOptions {
