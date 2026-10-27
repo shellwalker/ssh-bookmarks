@@ -259,6 +259,7 @@ private struct MenuHostButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(UITestContainer(identifier: UITestID.host(host.label)))
         .padding(.horizontal, 6)
         .onHover { inside in
             if inside { onHover() }

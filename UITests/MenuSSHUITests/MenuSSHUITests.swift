@@ -166,7 +166,8 @@ final class MenuSSHUITests: XCTestCase {
     }
 
     private func marked(_ root: XCUIElement, _ identifier: String) -> XCUIElement {
-        root.descendants(matching: .any)[identifier]
+        // SwiftUI 会把同一 identifier 复制到子元素上，下标查询在有多个匹配时会直接失败。
+        root.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
     /// macOS 的 SwiftUI alert 有时是 sheet，有时是 dialog。

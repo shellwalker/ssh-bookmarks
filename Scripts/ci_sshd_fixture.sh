@@ -32,6 +32,17 @@ stop() {
   stop_one "$DIR/sshd-b.pid"
 }
 
+enable_login() {
+  local password="$1"
+  # sysadminctl 新建的账号经常带“已过期”策略，sshd 会在公钥通过后仍被 PAM 拒绝。
+  sudo pwpolicy -u "$USER_NAME" -clearaccountpolicies >/dev/null 2>&1 || true
+  sudo dscl . -delete "/Users/$USER_NAME" accountPolicyData >/dev/null 2>&1 || true
+  sudo /usr/sbin/sysadminctl -resetPasswordFor "$USER_NAME" -newPassword "$password" >/dev/null 2>&1 || true
+  if dscl . -read /Groups/com.apple.access_ssh >/dev/null 2>&1; then
+    sudo dseditgroup -o edit -a "$USER_NAME" -t user com.apple.access_ssh >/dev/null 2>&1 || true
+  fi
+}
+
 ensure_user() {
   local password="$1"
   if id "$USER_NAME" >/dev/null 2>&1; then
@@ -118,6 +129,7 @@ start() {
   local password
   password="menush-ci-$(openssl rand -hex 8)"
   ensure_user "$password"
+  enable_login "$password"
   cat >"$ASKPASS" <<EOF
 #!/bin/sh
 printf '%s\n' '$password'
@@ -141,6 +153,19 @@ Host *
     GlobalKnownHostsFile /dev/null
 EOF
   chmod 644 "$DIR/.ssh/config"
+  # -J 的跳板连接不一定继承命令行 -o。把主机密钥检查关掉写进系统配置的最前面（第一次出现的值生效）。
+  if ! sudo grep -q 'MENUSH-CI-HOSTKEY' /etc/ssh/ssh_config 2>/dev/null; then
+    local prefix
+    prefix="$(mktemp)"
+    cat >"$prefix" <<'EOF'
+# MENUSH-CI-HOSTKEY
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+EOF
+    sudo sh -c "cat '$prefix' /etc/ssh/ssh_config > /etc/ssh/ssh_config.menush && mv /etc/ssh/ssh_config.menush /etc/ssh/ssh_config"
+    rm -f "$prefix"
+  fi
 
   local port_a port_b
   port_a=22221
