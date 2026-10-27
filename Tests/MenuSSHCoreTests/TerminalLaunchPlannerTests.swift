@@ -53,6 +53,33 @@ final class TerminalLaunchPlannerTests: XCTestCase {
         XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .ghostty, version: "1.3.1"), .appleScript)
     }
 
+    func testStartupCommandIsASecondLine() {
+        let plan = TerminalLaunchPlanner.plan(
+            terminal: .terminal, argv: argv, mode: .newWindow, startupCommand: "cd /app && tmux attach")
+        guard case .appleScript(let src) = plan else { return XCTFail("expected AppleScript") }
+        XCTAssertTrue(src.contains("/usr/bin/ssh -l 'o'\\\\''brien' -- h\\ncd /app && tmux attach"))
+    }
+
+    func testStartupCommandEscapesQuotesAndBackslashes() {
+        let plan = TerminalLaunchPlanner.plan(terminal: .iTerm2, argv: argv, mode: .newWindow, startupCommand: "echo \"a\\b\"")
+        guard case .appleScript(let src) = plan else { return XCTFail("expected AppleScript") }
+        XCTAssertTrue(src.contains("\\necho \\\"a\\\\b\\\""))
+    }
+
+    func testLegacyGhosttyWrapsStartupInShell() {
+        let plan = TerminalLaunchPlanner.plan(
+            terminal: .ghostty, argv: argv, mode: .newWindow, ghosttyVersion: "1.2.3", startupCommand: "tmux attach")
+        XCTAssertEqual(
+            plan,
+            .process(
+                executable: "/usr/bin/open",
+                arguments: [
+                    "-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e", "/bin/sh", "-c",
+                    "/usr/bin/ssh -l 'o'\\''brien' -- h\ntmux attach",
+                ]
+            ))
+    }
+
     func testVersionCompare() {
         XCTAssertEqual(TerminalLaunchPlanner.compareVersions("1.3.0", "1.3.0"), .orderedSame)
         XCTAssertEqual(TerminalLaunchPlanner.compareVersions("1.2.10", "1.3.0"), .orderedAscending)

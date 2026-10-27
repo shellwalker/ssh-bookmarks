@@ -35,7 +35,84 @@ final class SSHConfigParserTests: XCTestCase {
 
         let hosts = SSHConfigParser.makeHosts(from: entries)
         XCTAssertEqual(hosts[0].hostname, "prod-api")
-        XCTAssertNil(hosts[0].port)
+        XCTAssertEqual(hosts[0].port, 2201)
+        XCTAssertEqual(hosts[0].username, "deploy")
+        XCTAssertEqual(hosts[0].identityFile, "~/.ssh/prod")
+        XCTAssertEqual(hosts[0].authMethod, .publicKey)
+        XCTAssertEqual(hosts[0].notes, "HostName 10.0.0.15")
         XCTAssertEqual(hosts[0].tags, ["ssh-config"])
+        XCTAssertEqual(hosts[2].jumpHost, "edge")
+        XCTAssertEqual(hosts[2].notes, "HostName jump.example.com")
+        XCTAssertEqual(hosts[2].authMethod, .automatic)
+    }
+
+    func testIncludeFillsFieldsAndSkipsCycles() {
+        let home = "/Users/me"
+        let files = [
+            "/Users/me/.ssh/config.d/notes.txt": "Host notes\n    User n\n",
+            "/Users/me/.ssh/config.d/web.conf": """
+                Host web
+                    User alice
+                    Port 2222
+                    IdentityFile ~/.ssh/id_ed25519
+                    ProxyJump user@bastion:22
+                    HostName 10.1.1.1
+                """,
+            "/Users/me/.ssh/config.d/.hidden": "Host hidden\n    User nope\n",
+            "/Users/me/.ssh/loop.conf": """
+                Include loop.conf
+                Host looped
+                    User bob
+                Host bad
+                    User -root
+                    IdentityFile -secret
+                    Port 99999
+                    ProxyJump -oProxyCommand=x
+                """,
+        ]
+        let text = """
+            Include config.d/*
+            Include loop.conf
+            Match host x
+                Include loop.conf
+            """
+        let entries = SSHConfigParser.parse(
+            text,
+            homeDirectory: home,
+            readFile: { files[$0] },
+            listDirectory: { directory in
+                directory == "/Users/me/.ssh/config.d" ? ["web.conf", ".hidden", "notes.txt"] : []
+            }
+        )
+        XCTAssertEqual(entries.map(\.alias), ["notes", "web", "looped", "bad"])
+        let hosts = SSHConfigParser.makeHosts(from: entries)
+        XCTAssertEqual(hosts[1].hostname, "web")
+        XCTAssertEqual(hosts[1].username, "alice")
+        XCTAssertEqual(hosts[1].port, 2222)
+        XCTAssertEqual(hosts[1].identityFile, "~/.ssh/id_ed25519")
+        XCTAssertEqual(hosts[1].authMethod, .publicKey)
+        XCTAssertEqual(hosts[1].jumpHost, "user@bastion:22")
+        XCTAssertEqual(hosts[1].notes, "HostName 10.1.1.1")
+        XCTAssertEqual(hosts[2].username, "bob")
+        XCTAssertEqual(hosts[3].username, "")
+        XCTAssertNil(hosts[3].identityFile)
+        XCTAssertNil(hosts[3].port)
+        XCTAssertNil(hosts[3].jumpHost)
+        XCTAssertFalse(entries.contains { $0.alias == "hidden" })
+        XCTAssertFalse(SSHConfigParser.globMatch(pattern: "*", name: ".hidden"))
+        XCTAssertTrue(SSHConfigParser.globMatch(pattern: "*.conf", name: "web.conf"))
+        XCTAssertTrue(SSHConfigParser.globMatch(pattern: ".?*", name: ".hidden"))
+    }
+
+    func testIncludeInsideHostAppliesKeywords() {
+        let files = ["/Users/me/.ssh/snippet": "User carol\n"]
+        let entries = SSHConfigParser.parse(
+            "Host app\n    Include snippet\n",
+            homeDirectory: "/Users/me",
+            readFile: { files[$0] },
+            listDirectory: { _ in [] }
+        )
+        XCTAssertEqual(entries.map(\.alias), ["app"])
+        XCTAssertEqual(entries.first?.user, "carol")
     }
 }

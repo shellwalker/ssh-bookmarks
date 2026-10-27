@@ -67,6 +67,10 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
     public var portForwards: [PortForward]
     /// 额外的 `-o Key=Value` 选项。
     public var extraOptions: [SSHOption]
+    /// 显式打开时追加 `-o ForwardAgent=yes`。
+    public var forwardAgent: Bool
+    /// 连接后在终端里换行再输入的一行命令。空字符串表示不追加。
+    public var startupCommand: String
     public var isFavorite: Bool
     public var notes: String
     public var lastConnectedAt: Date?
@@ -88,6 +92,8 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         jumpHost: String? = nil,
         portForwards: [PortForward] = [],
         extraOptions: [SSHOption] = [],
+        forwardAgent: Bool = false,
+        startupCommand: String = "",
         isFavorite: Bool = false,
         notes: String = "",
         lastConnectedAt: Date? = nil,
@@ -107,6 +113,8 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         self.jumpHost = jumpHost
         self.portForwards = portForwards
         self.extraOptions = extraOptions
+        self.forwardAgent = forwardAgent
+        self.startupCommand = startupCommand
         self.isFavorite = isFavorite
         self.notes = notes
         self.lastConnectedAt = lastConnectedAt
@@ -117,8 +125,8 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
 
     private enum CodingKeys: String, CodingKey {
         case id, label, hostname, port, username, groupID, tags, authMethod, identityFile
-        case jumpHost, portForwards, extraOptions, isFavorite, notes, lastConnectedAt, createdAt, updatedAt
-        case updatedByDeviceId
+        case jumpHost, portForwards, extraOptions, forwardAgent, startupCommand, isFavorite, notes
+        case lastConnectedAt, createdAt, updatedAt, updatedByDeviceId
     }
 
     /// 宽松解码：新增字段缺失时使用默认值，保证旧版本 JSON 可读。
@@ -136,6 +144,8 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         jumpHost = try c.decodeIfPresent(String.self, forKey: .jumpHost)
         portForwards = try c.decodeIfPresent([PortForward].self, forKey: .portForwards) ?? []
         extraOptions = try c.decodeIfPresent([SSHOption].self, forKey: .extraOptions) ?? []
+        forwardAgent = try c.decodeIfPresent(Bool.self, forKey: .forwardAgent) ?? false
+        startupCommand = try c.decodeIfPresent(String.self, forKey: .startupCommand) ?? ""
         isFavorite = try c.decodeIfPresent(Bool.self, forKey: .isFavorite) ?? false
         notes = try c.decodeIfPresent(String.self, forKey: .notes) ?? ""
         lastConnectedAt = try c.decodeIfPresent(Date.self, forKey: .lastConnectedAt)
@@ -158,6 +168,8 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
         try c.encodeIfPresent(jumpHost, forKey: .jumpHost)
         try c.encode(portForwards, forKey: .portForwards)
         try c.encode(extraOptions, forKey: .extraOptions)
+        try c.encode(forwardAgent, forKey: .forwardAgent)
+        try c.encode(startupCommand, forKey: .startupCommand)
         try c.encode(isFavorite, forKey: .isFavorite)
         try c.encode(notes, forKey: .notes)
         try c.encodeIfPresent(lastConnectedAt, forKey: .lastConnectedAt)

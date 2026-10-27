@@ -9,6 +9,18 @@ public enum HostFilter: Hashable, Sendable {
     case tag(String)
 }
 
+/// 侧栏里的一层分组。depth 从 0 开始，只用于缩进，不继承属性。
+public struct GroupOutlineEntry: Equatable, Sendable, Identifiable {
+    public var group: HostGroup
+    public var depth: Int
+    public var id: UUID { group.id }
+
+    public init(group: HostGroup, depth: Int) {
+        self.group = group
+        self.depth = depth
+    }
+}
+
 /// 标签及其使用次数。
 public struct TagCount: Hashable, Sendable, Identifiable {
     public var tag: String
@@ -55,7 +67,9 @@ public extension HostLibrary {
                 switch filter {
                 case .all: return true
                 case .favorites: return host.isFavorite
-                case .group(let id): return host.groupID == id
+                case .group(let id):
+                    guard let groupID = host.groupID else { return false }
+                    return groupIDs(inTreeOf: id).contains(groupID)
                 case .ungrouped: return host.groupID.map { !knownGroupIDs.contains($0) } ?? true
                 case .tag(let tag): return host.tags.contains { $0.caseInsensitiveCompare(tag) == .orderedSame }
                 }
@@ -95,5 +109,66 @@ public extension HostLibrary {
     func hasGroup(named name: String, excluding id: UUID? = nil) -> Bool {
         let key = HostInputParser.normalizedName(name).lowercased()
         return groups.contains { $0.id != id && $0.name.lowercased() == key }
+    }
+
+    /// `root` 自身以及所有子孙分组。数据里的环会被跳过。
+    public func groupIDs(inTreeOf root: UUID) -> Set<UUID> {
+        var result: Set<UUID> = [root]
+        var frontier: [UUID] = [root]
+        while !frontier.isEmpty {
+            let parents = frontier
+            frontier = []
+            for group in groups {
+                guard let parent = group.parentID, parents.contains(parent), result.insert(group.id).inserted else { continue }
+                frontier.append(group.id)
+            }
+        }
+        return result
+    }
+
+    /// 先根后子。父分组缺失的项视为顶层。环里没有根的分组追加在最后，避免从界面消失。
+    public func groupOutline() -> [GroupOutlineEntry] {
+        let known = Set(groups.map(\.id))
+        func children(of parent: UUID) -> [HostGroup] {
+            groups
+                .filter { $0.parentID == parent }
+                .sorted { ($0.sortOrder, $0.name.lowercased()) < ($1.sortOrder, $1.name.lowercased()) }
+        }
+        var result: [GroupOutlineEntry] = []
+        var seen = Set<UUID>()
+        func walk(_ group: HostGroup, depth: Int) {
+            guard seen.insert(group.id).inserted else { return }
+            result.append(GroupOutlineEntry(group: group, depth: depth))
+            for child in children(of: group.id) {
+                walk(child, depth: depth + 1)
+            }
+        }
+        let roots =
+            groups
+            .filter { group in
+                guard let parent = group.parentID else { return true }
+                return !known.contains(parent)
+            }
+            .sorted { ($0.sortOrder, $0.name.lowercased()) < ($1.sortOrder, $1.name.lowercased()) }
+        for root in roots { walk(root, depth: 0) }
+        let leftover = groups.filter { !seen.contains($0.id) }.sorted {
+            ($0.sortOrder, $0.name.lowercased()) < ($1.sortOrder, $1.name.lowercased())
+        }
+        for group in leftover { walk(group, depth: 0) }
+        return result
+    }
+
+    /// 拒绝自己、不存在的父分组，以及会形成环的子孙。`parentID == nil` 表示移到顶层。
+    @discardableResult
+    public mutating func reparentGroup(id: UUID, parentID: UUID?, now: Date = Date(), deviceId: String? = nil) -> Bool {
+        guard let index = groups.firstIndex(where: { $0.id == id }) else { return false }
+        if let parentID {
+            guard parentID != id, groups.contains(where: { $0.id == parentID }) else { return false }
+            if groupIDs(inTreeOf: id).contains(parentID) { return false }
+        }
+        groups[index].parentID = parentID
+        groups[index].updatedAt = now
+        if let deviceId { groups[index].updatedByDeviceId = deviceId }
+        return true
     }
 }

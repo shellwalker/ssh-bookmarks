@@ -28,7 +28,7 @@ public enum SyncFormatError: Error, Equatable, Sendable {
 
 /// 便携同步文件。只有站点、分组、端口转发和墓碑，没有任何秘密字段。
 public struct SyncDocument: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
     public static let fileName = "menu-ssh-sync.json"
 
     public var schemaVersion: Int
@@ -83,7 +83,8 @@ public struct SyncDocument: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(schemaVersion, forKey: .schemaVersion)
+        // 写出时升到当前版本，旧客户端会因 newerSchema 拒绝覆盖，避免丢掉新字段。
+        try c.encode(Self.currentSchemaVersion, forKey: .schemaVersion)
         try c.encode(deviceId, forKey: .deviceId)
         try c.encode(groups, forKey: .groups)
         try c.encode(hosts, forKey: .hosts)

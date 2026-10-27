@@ -195,15 +195,35 @@ final class HostStoreModel: ObservableObject {
         persist()
     }
 
-    /// 从 ~/.ssh/config 导入（跳过已存在的同名 hostname）。返回导入数量。
+    @discardableResult
+    func reparentGroup(id: UUID, parentID: UUID?) -> Bool {
+        guard library.reparentGroup(id: id, parentID: parentID, deviceId: deviceId) else { return false }
+        persist()
+        return true
+    }
+
+    /// 从 ~/.ssh/config 导入（跳过已存在的同名 hostname）。展开 Include，并回填 User / Port / IdentityFile / ProxyJump。
     @discardableResult
     func importSSHConfig(from url: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh/config")) -> Int {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             lastError = L10n.format("Cannot read %@", url.path)
             return 0
         }
+        let home = NSHomeDirectory()
+        let fm = FileManager.default
+        let entries = SSHConfigParser.parse(
+            text,
+            homeDirectory: home,
+            readFile: { path in
+                guard let data = fm.contents(atPath: path) else { return nil }
+                return String(data: data, encoding: .utf8)
+            },
+            listDirectory: { directory in
+                (try? fm.contentsOfDirectory(atPath: directory)) ?? []
+            }
+        )
         let existing = Set(library.hosts.map { $0.hostname.lowercased() })
-        let newHosts = SSHConfigParser.makeHosts(from: SSHConfigParser.parse(text))
+        let newHosts = SSHConfigParser.makeHosts(from: entries)
             .filter { !existing.contains($0.hostname.lowercased()) }
         for var h in newHosts {
             h.updatedByDeviceId = deviceId

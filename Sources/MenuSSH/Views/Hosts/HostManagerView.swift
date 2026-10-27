@@ -54,7 +54,13 @@ struct HostManagerView: View {
             }
         }
         .sheet(item: $editingHost) { host in
-            HostEditorView(host: host, groups: hosts.library.sortedGroups) { saved in
+            HostEditorView(
+                host: host,
+                outline: hosts.library.groupOutline(),
+                otherHosts: hosts.library.hosts
+                    .filter { $0.id != host.id }
+                    .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
+            ) { saved in
                 hosts.save(saved)
                 selection = saved.id
             }
@@ -119,6 +125,23 @@ struct HostManagerView: View {
         return nil
     }
 
+    @ViewBuilder
+    private func nestMenu(for group: HostGroup) -> some View {
+        let candidates = hosts.library.groupOutline().filter { $0.group.id != group.id }
+        if !candidates.isEmpty {
+            Menu("Nest Under") {
+                ForEach(candidates) { entry in
+                    Button {
+                        hosts.reparentGroup(id: group.id, parentID: entry.group.id)
+                    } label: {
+                        Text(verbatim: String(repeating: "  ", count: entry.depth) + entry.group.name)
+                    }
+                    .disabled(hosts.library.groupIDs(inTreeOf: group.id).contains(entry.group.id))
+                }
+            }
+        }
+    }
+
     private func commitGroupName(_ group: HostGroup?) {
         let name = groupNameDraft
         groupNameDraft = ""
@@ -147,12 +170,14 @@ struct HostManagerView: View {
                     .tag(HostFilter.favorites)
             }
             Section("Groups") {
-                ForEach(hosts.library.sortedGroups) { group in
+                ForEach(hosts.library.groupOutline()) { entry in
+                    let group = entry.group
                     Label {
                         Text(verbatim: group.name)
                     } icon: {
                         Image(systemName: "folder")
                     }
+                    .padding(.leading, CGFloat(entry.depth) * 12)
                     .badge(hosts.library.count(for: .group(group.id)))
                     .tag(HostFilter.group(group.id))
                     .contextMenu {
@@ -161,6 +186,11 @@ struct HostManagerView: View {
                             renamingGroup = group
                             showingRenameGroup = true
                         }
+                        nestMenu(for: group)
+                        Button("Move to Top Level") {
+                            hosts.reparentGroup(id: group.id, parentID: nil)
+                        }
+                        .disabled(group.parentID == nil)
                         Button("Delete Group…", role: .destructive) { groupPendingDeletion = group }
                     }
                 }

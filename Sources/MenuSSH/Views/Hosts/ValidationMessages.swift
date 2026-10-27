@@ -23,6 +23,8 @@ extension SSHCommandError {
             return L10n.format("SSH option %@ is not allowed or has an invalid value.", key)
         case .invalidPortForward(_):
             return String(localized: "Invalid port forward.")
+        case .invalidStartupCommand(_):
+            return String(localized: "Startup command must be a single line without control characters.")
         case .invalidSSHPath(_):
             return String(localized: "SSH executable must be an absolute path.")
         }

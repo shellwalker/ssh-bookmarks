@@ -48,6 +48,7 @@ public struct HostLibrary: Codable, Equatable, Sendable {
 /// 菜单栏面板 / 站点列表中的一个分区。
 public struct HostSection: Identifiable, Equatable, Sendable {
     public enum Kind: Equatable, Sendable {
+        case recent
         case favorites
         case group(HostGroup)
         case ungrouped
@@ -58,6 +59,7 @@ public struct HostSection: Identifiable, Equatable, Sendable {
 
     public var id: String {
         switch kind {
+        case .recent: return "recent"
         case .favorites: return "favorites"
         case .group(let g): return g.id.uuidString
         case .ungrouped: return "ungrouped"
@@ -93,6 +95,8 @@ public extension HostLibrary {
 
         let isSearching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         if !isSearching {
+            let recent = recentHosts(limit: HostLibrary.recentSectionLimit)
+            if !recent.isEmpty { result.append(HostSection(kind: .recent, hosts: recent)) }
             let favorites = matched.filter(\.isFavorite).sorted(by: byLabel)
             if !favorites.isEmpty { result.append(HostSection(kind: .favorites, hosts: favorites)) }
         }
@@ -114,8 +118,10 @@ public extension HostLibrary {
         return result
     }
 
-    /// 最近连接（菜单栏面板顶部可用）。
-    func recentHosts(limit: Int = 5) -> [SSHHost] {
+    public static let recentSectionLimit = 8
+
+    /// 最近连接（菜单栏面板顶部）。最多 8 条。
+    func recentHosts(limit: Int = HostLibrary.recentSectionLimit) -> [SSHHost] {
         hosts
             .filter { $0.lastConnectedAt != nil }
             .sorted { ($0.lastConnectedAt ?? .distantPast) > ($1.lastConnectedAt ?? .distantPast) }

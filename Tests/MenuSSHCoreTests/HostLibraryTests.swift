@@ -27,6 +27,32 @@ final class HostLibraryTests: XCTestCase {
         XCTAssertEqual(s[1].hosts.map(\.label), ["API", "DB"])
     }
 
+    func testRecentSectionIsFirstAndHiddenWhileSearching() {
+        var lib = makeLibrary()
+        let older = Date(timeIntervalSince1970: 10)
+        let newer = Date(timeIntervalSince1970: 20)
+        lib.hosts[0].lastConnectedAt = older
+        lib.hosts[3].lastConnectedAt = newer
+        let sections = lib.sections(matching: "")
+        XCTAssertEqual(sections.first?.kind, .recent)
+        XCTAssertEqual(sections.first?.hosts.map(\.label), ["Home NAS", "API"])
+        XCTAssertEqual(sections.first?.id, "recent")
+        XCTAssertTrue(sections.contains { $0.kind == .favorites })
+        XCTAssertFalse(lib.sections(matching: "api").contains { $0.kind == .recent })
+
+        for index in lib.hosts.indices {
+            lib.hosts[index].lastConnectedAt = Date(timeIntervalSince1970: TimeInterval(index))
+        }
+        XCTAssertEqual(lib.recentHosts().count, 4)
+        let many = HostLibrary(
+            hosts: (0..<10).map { index in
+                SSHHost(
+                    label: "h\(index)", hostname: "h\(index)", lastConnectedAt: Date(timeIntervalSince1970: TimeInterval(index)))
+            })
+        XCTAssertEqual(many.recentHosts().count, HostLibrary.recentSectionLimit)
+        XCTAssertEqual(many.recentHosts().first?.label, "h9")
+    }
+
     func testSearchMatchesTagsGroupsAndMultipleTokens() {
         let lib = makeLibrary()
         XCTAssertEqual(lib.hosts(matching: "postgres").map(\.label), ["DB"])

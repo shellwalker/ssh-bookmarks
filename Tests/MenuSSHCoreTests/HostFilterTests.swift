@@ -64,6 +64,41 @@ final class HostFilterTests: XCTestCase {
         XCTAssertNil(lib.hosts[3].groupID)
     }
 
+    func testParentGroupIncludesDescendants() {
+        let child = HostGroup(name: "Child", parentID: prod.id, sortOrder: 2)
+        var lib = makeLibrary()
+        lib.groups.append(child)
+        lib.hosts.append(SSHHost(label: "leaf", hostname: "leaf.example", groupID: child.id))
+        XCTAssertEqual(lib.hosts(filter: .group(prod.id), query: "").map(\.label), ["API", "db", "leaf"])
+        XCTAssertEqual(lib.hosts(filter: .group(child.id), query: "").map(\.label), ["leaf"])
+        XCTAssertEqual(lib.count(for: .group(prod.id)), 3)
+        XCTAssertEqual(lib.groupIDs(inTreeOf: prod.id), Set([prod.id, child.id]))
+    }
+
+    func testGroupOutlineAndReparentRejectsCycles() {
+        let root = HostGroup(name: "Root", sortOrder: 0)
+        let child = HostGroup(name: "Child", parentID: root.id, sortOrder: 0)
+        let leaf = HostGroup(name: "Leaf", parentID: child.id, sortOrder: 0)
+        let orphan = HostGroup(name: "Orphan", parentID: UUID(), sortOrder: 1)
+        var lib = HostLibrary(groups: [leaf, orphan, child, root])
+        let outline = lib.groupOutline()
+        XCTAssertEqual(outline.map(\.group.name), ["Root", "Child", "Leaf", "Orphan"])
+        XCTAssertEqual(outline.map(\.depth), [0, 1, 2, 0])
+        XCTAssertFalse(lib.reparentGroup(id: root.id, parentID: leaf.id))
+        XCTAssertFalse(lib.reparentGroup(id: root.id, parentID: root.id))
+        XCTAssertFalse(lib.reparentGroup(id: root.id, parentID: UUID()))
+        XCTAssertNil(lib.groups.first { $0.id == root.id }?.parentID)
+        XCTAssertTrue(lib.reparentGroup(id: child.id, parentID: nil))
+        XCTAssertNil(lib.groups.first { $0.id == child.id }?.parentID)
+        let a = HostGroup(name: "A", parentID: nil)
+        var b = HostGroup(name: "B")
+        b.parentID = a.id
+        var cycleA = a
+        cycleA.parentID = b.id
+        let cycled = HostLibrary(groups: [cycleA, b])
+        XCTAssertEqual(Set(cycled.groupOutline().map(\.group.name)), Set(["A", "B"]))
+    }
+
     func testHasGroupNamed() {
         let lib = makeLibrary()
         XCTAssertTrue(lib.hasGroup(named: "  production "))

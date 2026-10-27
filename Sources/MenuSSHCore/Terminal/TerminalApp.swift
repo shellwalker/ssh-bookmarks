@@ -71,9 +71,14 @@ public enum TerminalLaunchPlanner {
         terminal: TerminalApp,
         argv: [String],
         mode: TerminalOpenMode,
-        ghosttyVersion: String? = nil
+        ghosttyVersion: String? = nil,
+        startupCommand: String? = nil
     ) -> TerminalLaunchPlan {
-        let commandLine = ShellQuoting.join(argv)
+        var commandLine = ShellQuoting.join(argv)
+        if let startupCommand, !startupCommand.isEmpty {
+            // 换行后再输入用户的一行命令。调用方必须已拒绝控制字符。
+            commandLine += "\n" + startupCommand
+        }
         let literal = AppleScriptQuoting.stringLiteral(commandLine)
 
         switch terminal {
@@ -154,7 +159,16 @@ public enum TerminalLaunchPlanner {
                     end tell
                     """)
             }
-            // 兼容旧版 Ghostty：开一个新实例，-e 之后是要执行的命令（argv 直接传递，不经 shell）。
+            // 兼容旧版 Ghostty：没有启动命令时 argv 直接交给 -e。
+            // 有启动命令时改用 sh -c，让同一段文本在换行后继续。命令本身是单个参数，不再经外层 shell。
+            if let startupCommand, !startupCommand.isEmpty {
+                return .process(
+                    executable: "/usr/bin/open",
+                    arguments: [
+                        "-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e", "/bin/sh", "-c", commandLine,
+                    ]
+                )
+            }
             return .process(
                 executable: "/usr/bin/open",
                 arguments: ["-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e"] + argv
