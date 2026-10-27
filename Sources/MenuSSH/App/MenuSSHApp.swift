@@ -79,7 +79,6 @@ struct MenuSSHApp: App {
 @MainActor
 struct MenuSSHUITestApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @Environment(\.openWindow) private var openWindow
     @StateObject private var hostStore: HostStoreModel
     @StateObject private var settings: SettingsStore
 

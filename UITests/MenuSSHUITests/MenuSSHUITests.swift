@@ -359,6 +359,7 @@ private enum id {
     static let hostsNew = "hosts.new"
     static let hostsSettings = "hosts.settings"
     static let hostsNewGroup = "hosts.newGroup"
+    static let groupName = "group.name"
     static let groupCreate = "group.create"
     static let hostEdit = "host.edit"
     static let editorLabel = "editor.label"

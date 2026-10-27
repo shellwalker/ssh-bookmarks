@@ -181,7 +181,15 @@ final class SSHIntegrationTests: XCTestCase {
                 HostName 127.0.0.1
             """
         try included.write(to: configDir.appendingPathComponent("web.conf"), atomically: true, encoding: .utf8)
-        try "Include config.d/*.conf\n".write(to: sshDir.appendingPathComponent("config"), atomically: true, encoding: .utf8)
+        let config = """
+            Include config.d/*.conf
+
+            Host *
+                StrictHostKeyChecking no
+                UserKnownHostsFile /dev/null
+                GlobalKnownHostsFile /dev/null
+            """
+        try config.write(to: sshDir.appendingPathComponent("config"), atomically: true, encoding: .utf8)
         let text = try String(contentsOf: sshDir.appendingPathComponent("config"))
         let entries = SSHConfigParser.parse(
             text,

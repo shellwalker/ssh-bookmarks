@@ -70,7 +70,7 @@ Port $port
 ListenAddress 127.0.0.1
 HostKey $DIR/ssh_host_ed25519_key
 PidFile $pidfile
-AuthorizedKeysFile $DIR/authorized_keys
+AuthorizedKeysFile /Users/$USER_NAME/.ssh/authorized_keys
 PasswordAuthentication yes
 KbdInteractiveAuthentication yes
 PubkeyAuthentication yes
@@ -80,6 +80,8 @@ AllowAgentForwarding yes
 PermitRootLogin no
 StrictModes no
 UseDNS no
+MaxStartups 50:30:200
+PerSourcePenalties no
 LogLevel VERBOSE
 PrintMotd no
 PrintLastLog no
@@ -110,8 +112,8 @@ start() {
     echo "sshd fixture requires macOS" >&2
     exit 1
   fi
-  mkdir -p "$DIR" "$ROOT/build"
-  chmod 700 "$DIR"
+  mkdir -p "$DIR" "$ROOT/build" "$DIR/.ssh"
+  chmod 755 "$DIR"
   # Password stays in the askpass script (mode 700), not in the env file or logs.
   local password
   password="menush-ci-$(openssl rand -hex 8)"
@@ -125,8 +127,20 @@ EOF
 
   ssh-keygen -q -t ed25519 -f "$DIR/ssh_host_ed25519_key" -N ""
   ssh-keygen -q -t ed25519 -f "$DIR/id_ed25519" -N ""
-  cat "$DIR/id_ed25519.pub" >"$DIR/authorized_keys"
-  chmod 600 "$DIR/authorized_keys" "$DIR/id_ed25519"
+  chmod 600 "$DIR/id_ed25519" "$DIR/ssh_host_ed25519_key"
+  # sshd 以降权后的用户读 authorized_keys。放在该用户自己的 ~/.ssh，避免 /tmp 目录权限导致 Permission denied。
+  sudo mkdir -p "/Users/$USER_NAME/.ssh"
+  sudo cp "$DIR/id_ed25519.pub" "/Users/$USER_NAME/.ssh/authorized_keys"
+  sudo chown -R "$USER_NAME:staff" "/Users/$USER_NAME/.ssh"
+  sudo chmod 700 "/Users/$USER_NAME/.ssh"
+  sudo chmod 600 "/Users/$USER_NAME/.ssh/authorized_keys"
+  cat >"$DIR/.ssh/config" <<'EOF'
+Host *
+    StrictHostKeyChecking no
+    UserKnownHostsFile /dev/null
+    GlobalKnownHostsFile /dev/null
+EOF
+  chmod 644 "$DIR/.ssh/config"
 
   local port_a port_b
   port_a=22221

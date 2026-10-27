@@ -171,7 +171,7 @@ jobs:
           # shellcheck disable=SC1091
           source build/sshd-fixture.env
           set +a
-          swift test --filter Integration
+          swift test --filter Integration --no-parallel
 
       - name: Stop temporary sshd
         if: always()
