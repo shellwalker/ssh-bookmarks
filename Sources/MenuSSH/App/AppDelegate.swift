@@ -32,15 +32,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
     }
 
-    /// 只动站点窗口和设置窗口。面板和编辑 sheet 更窄，保持原样。
+    /// 宽窗口靠左铺满高度，面板靠右。两者重叠时，XCTest 的点击会落到前面的窗口上。
     private static func placeWideWindowForUITest(_ window: NSWindow) {
-        guard window.frame.width > 600, let screen = window.screen ?? NSScreen.main else { return }
+        guard let screen = window.screen ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
-        let height = visible.height - 8
-        let width = min(max(window.frame.width, 920), visible.width - 16)
-        let frame = NSRect(x: visible.minX + 8, y: visible.maxY - height - 8, width: width, height: height)
-        let sameOrigin = abs(window.frame.minY - frame.minY) < 2 && abs(window.frame.height - frame.height) < 2
-        if sameOrigin { return }
+        let wide = window.frame.width > 600
+        let width = wide ? min(window.frame.width, 960) : window.frame.width
+        let height = wide ? visible.height - 8 : window.frame.height
+        guard width > 200, height > 200 else { return }
+        let frame = NSRect(
+            x: wide ? visible.minX + 8 : visible.maxX - width - 8,
+            y: visible.maxY - height - 8,
+            width: width,
+            height: height
+        )
+        let same =
+            abs(window.frame.minX - frame.minX) < 2 && abs(window.frame.minY - frame.minY) < 2
+            && abs(window.frame.width - frame.width) < 2 && abs(window.frame.height - frame.height) < 2
+        if same { return }
         window.isRestorable = false
         window.setFrame(frame, display: true)
     }

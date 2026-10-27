@@ -81,7 +81,14 @@ final class MenuSSHUITests: XCTestCase {
         let forwards = host["portForwards"] as? [[String: Any]] ?? []
         XCTAssertEqual(forwards.first?["listenPort"] as? Int, 9090)
 
-        marked(panel, "host.CI Web").click()
+        // 站点窗口在前面时，第一下只是激活面板，按钮要再点一次才会连接。
+        activateWindow(containing: id.panel, app: app)
+        let row = marked(panel, "host.CI Web")
+        row.click()
+        if !FileManager.default.fileExists(atPath: ctx.logURL.path) {
+            Thread.sleep(forTimeInterval: 0.4)
+            row.click()
+        }
         let log = try waitForLog(ctx.logURL)
         let argv = log["argv"] as? [String] ?? []
         XCTAssertTrue(argv.contains("ForwardAgent=yes"), argv.joined(separator: " "))
@@ -158,6 +165,13 @@ final class MenuSSHUITests: XCTestCase {
         app.launch()
         XCTAssertTrue(marked(app, id.panel).waitForExistence(timeout: 20))
         return Context(app: app, dataDir: dataDir, logURL: logURL)
+    }
+
+    /// 点标题栏把窗口调到前面，不碰到里面的主机行。
+    private func activateWindow(containing identifier: String, app: XCUIApplication) {
+        let window = app.windows.containing(.any, identifier: identifier).firstMatch
+        XCTAssertTrue(window.waitForExistence(timeout: 3))
+        window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.01)).click()
     }
 
     private func openSettings(_ app: XCUIApplication) {
