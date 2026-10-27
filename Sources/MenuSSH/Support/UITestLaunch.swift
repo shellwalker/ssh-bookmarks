@@ -15,6 +15,14 @@ enum UITestLaunch {
         return URL(fileURLWithPath: path, isDirectory: true)
     }
 
+    /// 测试可以指向一份假的 `~/.ssh`，用来列出密钥和导入 config。正式启动始终是用户主目录。
+    static var sshDirectory: URL {
+        if isEnabled, let path = ProcessInfo.processInfo.environment["MENUSH_SSH_DIR"], !path.isEmpty {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return URL(fileURLWithPath: NSHomeDirectory(), isDirectory: true).appendingPathComponent(".ssh", isDirectory: true)
+    }
+
     /// 把本该发给终端的 argv 追加写成一行 JSON，而不是执行 AppleScript。
     static var fakeTerminalLogURL: URL? {
         guard isEnabled, let path = ProcessInfo.processInfo.environment["MENUSH_FAKE_TERMINAL_LOG"], !path.isEmpty else {
@@ -85,12 +93,18 @@ enum UITestID {
     static let panelSearch = "panel.search"
     static let panelManage = "panel.manageHosts"
     static let panelSettings = "panel.settings"
+    static let panelImport = "panel.import"
+    static let panelNewHost = "panel.newHost"
     static let hostsNew = "hosts.new"
+    static let hostsImport = "hosts.import"
+    static let hostsNotice = "hosts.notice"
+    static let hostsUndo = "hosts.undo"
     static let hostsSettings = "hosts.settings"
     static let hostsNewGroup = "hosts.newGroup"
     static let groupName = "group.name"
     static let groupCreate = "group.create"
     static let hostEdit = "host.edit"
+    static let hostDelete = "host.delete"
     static let editorLabel = "editor.label"
     static let editorHost = "editor.host"
     static let editorPort = "editor.port"
@@ -100,12 +114,20 @@ enum UITestID {
     static let editorForwardAgent = "editor.forwardAgent"
     static let editorUseJump = "editor.useJump"
     static let editorAddForward = "editor.addForward"
+    static let editorAddOption = "editor.addOption"
+    static let editorOptionKey = "editor.optionKey"
+    static let editorOptionValue = "editor.optionValue"
+    static let editorKeyPicker = "editor.keyPicker"
+    static let editorIdentity = "editor.identity"
     static let editorSave = "editor.save"
     static let editorCancel = "editor.cancel"
+    static let editorDiscard = "editor.discard"
+    static let forwardKind = "forward.kind"
     static let forwardListen = "forward.listen"
     static let forwardDestinationHost = "forward.destinationHost"
     static let forwardDestinationPort = "forward.destinationPort"
     static let forwardSave = "forward.save"
+    static let forwardCancel = "forward.cancel"
 
     static func host(_ label: String) -> String { "host.\(label)" }
     static func group(_ name: String) -> String { "group.\(name)" }

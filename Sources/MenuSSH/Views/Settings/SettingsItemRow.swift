@@ -332,8 +332,8 @@ private struct ImportSSHConfigRow: View {
     var body: some View {
         row(.importSSHConfig, subtitle: message, showsDivider: showsDivider) {
             Button("Import") {
-                let count = hosts.importSSHConfig()
-                message = Text(verbatim: L10n.format("Imported %lld hosts", Int64(count)))
+                guard let plan = hosts.importSSHConfig() else { return }
+                message = Text(verbatim: hosts.importNotice(plan))
             }
         }
     }
@@ -402,21 +402,55 @@ private struct SyncRow: View {
     }
 }
 
+private let syncFolderChangeWarning = """
+    Local hosts stay on this Mac. MenuSSH merges with the file in the new folder \
+    and does not replace your library with an empty one.
+    """
+
 @MainActor
 private struct SyncFolderRow: View {
     @EnvironmentObject private var settings: SettingsStore
     @EnvironmentObject private var hosts: HostStoreModel
+    @State private var folderConfirm: FolderConfirm?
     let showsDivider: Bool
+
+    private enum FolderConfirm {
+        case iCloud
+        case choose
+    }
 
     var body: some View {
         row(.syncFolder, subtitle: Text(verbatim: settings.resolvedSyncDirectory.path), showsDivider: showsDivider) {
             HStack(spacing: 8) {
                 Button("Use iCloud Drive") {
-                    settings.syncFolderPath = nil
-                    if settings.syncEnabled { hosts.syncNow() }
+                    guard settings.syncFolderPath != nil else { return }
+                    folderConfirm = .iCloud
                 }
-                Button("Choose Folder…") { chooseFolder() }
+                Button("Choose Folder…") { folderConfirm = .choose }
             }
+        }
+        .alert(
+            "Change the sync folder?",
+            isPresented: Binding(get: { folderConfirm != nil }, set: { if !$0 { folderConfirm = nil } })
+        ) {
+            Button("Change Folder", action: applyFolderChange)
+            Button("Cancel", role: .cancel) { folderConfirm = nil }
+        } message: {
+            Text(LocalizedStringKey(syncFolderChangeWarning))
+        }
+    }
+
+    private func applyFolderChange() {
+        let choice = folderConfirm
+        folderConfirm = nil
+        switch choice {
+        case .iCloud:
+            settings.syncFolderPath = nil
+            if settings.syncEnabled { hosts.syncNow() }
+        case .choose:
+            chooseFolder()
+        case nil:
+            break
         }
     }
 

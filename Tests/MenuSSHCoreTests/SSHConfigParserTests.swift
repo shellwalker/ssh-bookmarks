@@ -115,4 +115,24 @@ final class SSHConfigParserTests: XCTestCase {
         XCTAssertEqual(entries.map(\.alias), ["app"])
         XCTAssertEqual(entries.first?.user, "carol")
     }
+
+    func testPlanImportSkipsDuplicatesAndKeepsHostNameInNotes() {
+        let entries = SSHConfigParser.parse(
+            """
+            Host ci-alias
+                HostName 10.1.0.8
+                User ci
+            Host again
+                HostName 10.0.0.2
+            Host ci-alias
+                HostName 10.9.9.9
+            """
+        )
+        let plan = SSHConfigParser.planImport(entries: entries, existingHostnames: ["again", "Other"])
+        XCTAssertEqual(plan.skippedDuplicates, 2)
+        XCTAssertEqual(plan.hosts.map(\.hostname), ["ci-alias"])
+        XCTAssertEqual(plan.hosts.first?.label, "ci-alias")
+        XCTAssertEqual(plan.hosts.first?.notes, "HostName 10.1.0.8")
+        XCTAssertEqual(plan.hosts.first?.username, "ci")
+    }
 }

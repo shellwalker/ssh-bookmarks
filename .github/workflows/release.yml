@@ -46,6 +46,21 @@ jobs:
       - name: Test
         run: swift test
 
+      - name: Start temporary sshd
+        run: Scripts/ci_sshd_fixture.sh start
+
+      - name: SSH integration tests
+        run: |
+          set -a
+          # shellcheck disable=SC1091
+          source build/sshd-fixture.env
+          set +a
+          swift test --filter Integration --no-parallel
+
+      - name: Stop temporary sshd
+        if: always()
+        run: Scripts/ci_sshd_fixture.sh stop
+
       - name: Import signing certificate
         if: env.HAS_SIGNING_CERT == 'true'
         env:

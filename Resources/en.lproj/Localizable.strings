@@ -1,3 +1,8 @@
 /* MenuSSH English. Keys are the English source strings, so this file only needs entries that differ. */
 
 "Imported %lld hosts" = "Imported %lld hosts";
+"Imported %lld hosts. Skipped %lld duplicates." = "Imported %lld hosts. Skipped %lld duplicates.";
+"Connections use the alias. HostName is saved in notes." = "Connections use the alias. HostName is saved in notes.";
+"Sync kept the greater device id for %lld tied items. When updatedAt differs, the newer side is kept." = "Sync kept the greater device id for %lld tied items. When updatedAt differs, the newer side is kept.";
+"Other File…" = "Other File…";
+"Keepalive and ControlMaster are best set in ~/.ssh/config. Options here apply only to this host." = "Keepalive and ControlMaster are best set in ~/.ssh/config. Options here apply only to this host.";

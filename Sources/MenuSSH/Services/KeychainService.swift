@@ -7,14 +7,13 @@ enum KeychainError: Error, Equatable {
     case encoding
 }
 
-/// 密码与私钥口令存放在登录钥匙串（generic password）。
-/// account 约定：`host.<uuid>.password`、`host.<uuid>.passphrase`。
+/// 登录密码存放在登录钥匙串（generic password）。没有私钥口令保险库。
+/// account 约定：`host.<uuid>.password`。`passphrase` 这个账户不再使用。
 struct KeychainService {
     var service: String = Bundle.main.bundleIdentifier ?? "com.shellwalker.MenuSSH"
 
     enum SecretKind: String {
         case password
-        case passphrase
     }
 
     static func account(hostID: UUID, kind: SecretKind) -> String {
@@ -81,6 +80,5 @@ struct KeychainService {
     /// 删除站点时调用，清理所有相关密钥。
     func deleteAll(hostID: UUID) {
         try? delete(account: Self.account(hostID: hostID, kind: .password))
-        try? delete(account: Self.account(hostID: hostID, kind: .passphrase))
     }
 }

@@ -64,6 +64,18 @@ final class HostLibraryTests: XCTestCase {
         XCTAssertFalse(lib.sections(matching: "api").contains { $0.kind == .favorites })
     }
 
+    func testGroupPathShowsAncestors() {
+        let parent = HostGroup(name: "Production", sortOrder: 0)
+        let child = HostGroup(name: "Edge", parentID: parent.id, sortOrder: 0)
+        let library = HostLibrary(groups: [child, parent])
+        XCTAssertEqual(library.groupPath(id: parent.id), "Production")
+        XCTAssertEqual(library.groupPath(id: child.id), "Production / Edge")
+        var cycle = library
+        cycle.groups[1].parentID = child.id
+        XCTAssertFalse(cycle.groupPath(id: child.id).isEmpty)
+        XCTAssertLessThan(cycle.groupPath(id: child.id).count, 200)
+    }
+
     func testRemoveGroupMovesHostsToUngrouped() {
         var lib = makeLibrary()
         let prodID = lib.groups.first { $0.name == "Production" }!.id

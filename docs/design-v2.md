@@ -18,7 +18,7 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 | iCloud Drive 上的一个文件 | 用户登录了 iCloud 即可 | 不需要额外 entitlement。路径在 `~/Library/Mobile Documents/com~apple~CloudDocs/` 下，例如 `MenuSSH/menu-ssh-sync.json` | 整文件同步。两边同时写会变成「文件 2」副本 | 个人使用的推荐路径 |
 | `NSUbiquitousKeyValueStore` | 同样要开发者账号和 `com.apple.developer.ubiquity-kvstore-identifier` | 键值存储，上限约 1MB，不适合当站点主库 | 不采用 |
 
-推荐先把同步文件放在 iCloud Drive（或用户选的任意文件夹，见 B4）。CloudKit 留到有开发者账号、并且需要按字段合并的时候。iCloud Drive 没有记录级冲突 API，必须自己合并，并在写入时用 `NSFileCoordinator`，读端用 file presenter，减少系统复制出「文件 2」。
+推荐先把同步文件放在 iCloud Drive（或用户选的任意文件夹，见 B4）。CloudKit 留到有开发者账号、并且需要按字段合并的时候。iCloud Drive 没有记录级冲突 API，必须自己合并。读写已经包在 `NSFileCoordinator` 里（协调读、`.forReplacing` 协调写）。`NSFileVersion` 上未解决的冲突版本会先并进主文件，再标成已解决。Linux 上的核心测试不经过协调器，直接读写同一套合并结果。没有长期驻留的 file presenter。
 
 合并规则（iCloud Drive 与 B4 共用一套）：
 
@@ -83,7 +83,7 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 1. 同步文件夹默认是 iCloud Drive 的 `MenuSSH/`（`~/Library/Mobile Documents/com~apple~CloudDocs/MenuSSH/menu-ssh-sync.json`）。设置里可以改成任意文件夹。
 2. 墓碑保留 90 天，过期后不再压制站点。
 3. 终端回退不写回已保存的偏好，只影响这一次会话。
-4. 时间戳能分出先后时静默合并。只有时间戳相同且内容不同（或“还在 / 已删”打成平局）才算冲突，并给出一行摘要。
+4. 时间戳能分出先后时静默合并，留下 `updatedAt` 较新的一边。只有时间戳相同且内容不同（或“还在 / 已删”打成平局）才算冲突。平局时 `updatedByDeviceId` 字典序更大的一边留下。提示会写明这两条规则。
 5. 端口转发和分组（名称、父级、排序）写入同步文件。密码、口令、令牌不写。
 6. `updatedAt` 相同时，`updatedByDeviceId` 字典序更大的一边胜出。
 
@@ -92,6 +92,14 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 密码存在钥匙串，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`，且 `synchronizable = false`。连接时发一个 60 秒、单次有效的令牌（环境变量 `MENUSH_ASKPASS_TOKEN`），并设置 `SSH_ASKPASS_REQUIRE=force`。没有这个令牌，或提示语不是密码，askpass 进程不读钥匙串。不记录密码。
 
 `ssh-copy-id` 只在用户确认后，于用户自己的终端里运行，不在后台执行。没有公钥时只展示 `ssh-keygen -t ed25519`，不代跑。
+
+## 站点编辑（第二轮）
+
+- 额外选项是一行一个 `-o Key=Value`。名字只能是字母，值不能有控制字符。`ProxyCommand`、`LocalCommand`、`PermitLocalCommand`、`KnownHostsCommand`、`Include`、`Match`、`PKCS11Provider`、`SecurityKeyProvider` 在编辑时拒绝。keepalive / ControlMaster 建议写在 `~/.ssh/config`，这里的选项只作用于当前站点。`ForwardAgent=yes` 仍插在用户选项之前。
+- 私钥选择器列出 `~/.ssh` 里「有同名 `.pub`」的私钥，显示文件名、公钥类型和注释。`known_hosts`、`config`、`authorized_keys` 不是密钥。也可以手写 `~/` 路径，或选其他文件。选中 `.pub` 会改成对应私钥。缺文件或权限宽于 0600 只警告。没有私钥口令保险库；钥匙串里不再使用 `passphrase` 账户。
+- 导入 `~/.ssh/config` 不覆盖已有 hostname。空面板和空的站点窗口都可以导入，并说明连接用别名、HostName 进备注。
+- 面板里的子分组标题是「父 / 子」。悬停不改变键盘选中。
+- 其余误操作（删除确认、撤销、同步文件夹、密码、跳板环、端口冲突、未保存退出）见 `docs/testing.md`。
 
 ## 开放问题
 

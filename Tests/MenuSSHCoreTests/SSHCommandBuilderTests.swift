@@ -110,9 +110,43 @@ final class SSHCommandBuilderTests: XCTestCase {
         XCTAssertNil(try SSHCommandBuilder.startupCommand("   "))
         XCTAssertEqual(try SSHCommandBuilder.startupCommand(" cd /app && tmux attach "), "cd /app && tmux attach")
         XCTAssertThrowsError(try builder.argv(for: SSHHost(label: "x", hostname: "h", startupCommand: "id\nwhoami")))
+        XCTAssertEqual(try SSHCommandBuilder.startupCommand("echo hi\n"), "echo hi")
+        XCTAssertEqual(try SSHCommandBuilder.startupCommand("echo hi\r\n"), "echo hi")
         XCTAssertThrowsError(try SSHCommandBuilder.startupCommand(String(repeating: "a", count: 501)))
+        XCTAssertTrue(SSHCommandBuilder.startupCommandLooksLikeSecret("echo password=hunter2"))
+        XCTAssertTrue(SSHCommandBuilder.startupCommandLooksLikeSecret("sshpass -p x ssh h"))
+        XCTAssertFalse(SSHCommandBuilder.startupCommandLooksLikeSecret("cd /app && tmux attach"))
         let host = SSHHost(label: "x", hostname: "h", startupCommand: "cd /app && tmux attach")
         XCTAssertEqual(try builder.arguments(for: host), ["--", "h"])
+    }
+
+    func testNormalizeExtraOptionAllowAndDeny() {
+        XCTAssertEqual(SSHCommandBuilder.normalizeExtraOption(key: "  ", value: " "), .drop)
+        XCTAssertEqual(
+            SSHCommandBuilder.normalizeExtraOption(key: " ServerAliveInterval ", value: " 30 "),
+            .accept(SSHOption(key: "ServerAliveInterval", value: "30"))
+        )
+        XCTAssertEqual(SSHCommandBuilder.normalizeExtraOption(key: "", value: "1"), .reject(.emptyKey))
+        XCTAssertEqual(SSHCommandBuilder.normalizeExtraOption(key: "Bad Key", value: "1"), .reject(.invalidKey("Bad Key")))
+        XCTAssertEqual(SSHCommandBuilder.normalizeExtraOption(key: "ServerAliveInterval", value: " "), .reject(.emptyValue))
+        XCTAssertEqual(
+            SSHCommandBuilder.normalizeExtraOption(key: "SetEnv", value: "A\nB"), .reject(.controlCharacter))
+        let blocked = [
+            "ProxyCommand", "LocalCommand", "PermitLocalCommand", "KnownHostsCommand",
+            "Include", "Match", "PKCS11Provider", "SecurityKeyProvider",
+        ]
+        for key in blocked {
+            guard case .reject(.blockedKey(key)) = SSHCommandBuilder.normalizeExtraOption(key: key, value: "x") else {
+                return XCTFail(key)
+            }
+        }
+    }
+
+    func testHostnameAndUsernameRejectSpaces() {
+        XCTAssertThrowsError(try builder.argv(for: SSHHost(label: "x", hostname: " bad host ", username: "alice")))
+        XCTAssertThrowsError(try builder.argv(for: SSHHost(label: "x", hostname: "example.com", username: "bad user")))
+        let host = SSHHost(label: "x", hostname: " example.com ", port: 22, username: " alice ")
+        XCTAssertEqual(try builder.arguments(for: host), ["-l", "alice", "-p", "22", "--", "example.com"])
     }
 
     func testJumpHostSpecification() {

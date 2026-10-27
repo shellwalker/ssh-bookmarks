@@ -55,17 +55,26 @@ struct HostRow: View {
                     .lineLimit(1)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(Text(verbatim: hostAccessibilityLabel))
         .accessibilityIdentifier(UITestID.host(host.label))
+    }
+
+    private var hostAccessibilityLabel: String {
+        var parts = [host.label]
+        if !host.subtitle.isEmpty { parts.append(host.subtitle) }
+        if host.isFavorite { parts.append(String(localized: "Favorite")) }
+        return parts.joined(separator: ", ")
     }
 }
 
 extension HostSection {
-    /// 内置分区标题走本地化；用户自定义分组名原样显示。
-    var title: Text {
+    /// 内置分区标题走本地化。子分组显示「父 / 子」。
+    func title(in library: HostLibrary) -> Text {
         switch kind {
         case .recent: return Text("Recent")
         case .favorites: return Text("Favorites")
-        case .group(let g): return Text(verbatim: g.name)
+        case .group(let g): return Text(verbatim: library.groupPath(id: g.id))
         case .ungrouped: return Text("Ungrouped")
         }
     }

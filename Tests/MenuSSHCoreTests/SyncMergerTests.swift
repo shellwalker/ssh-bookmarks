@@ -29,6 +29,8 @@ final class SyncMergerTests: XCTestCase {
         let remote = doc([host("new", id: id, at: t0.addingTimeInterval(10), device: deviceB)])
         let outcome = SyncMerger.merge(local: local, remote: remote, now: t0.addingTimeInterval(20), writingDeviceId: deviceA)
         XCTAssertEqual(outcome.conflictCount, 0)
+        XCTAssertEqual(outcome.newerUpdatedAtKept, 1)
+        XCTAssertEqual(outcome.deviceIdOrderKept, 0)
         XCTAssertEqual(outcome.document.hosts.first?.label, "new")
         XCTAssertEqual(outcome.document.deviceId, deviceA)
     }
@@ -48,6 +50,8 @@ final class SyncMergerTests: XCTestCase {
         let remote = doc([host("from-b", id: id, at: t0, device: deviceB)])
         let outcome = SyncMerger.merge(local: local, remote: remote, now: t0.addingTimeInterval(1), writingDeviceId: deviceA)
         XCTAssertEqual(outcome.conflictCount, 1)
+        XCTAssertEqual(outcome.deviceIdOrderKept, 1)
+        XCTAssertEqual(outcome.newerUpdatedAtKept, 0)
         XCTAssertEqual(outcome.document.hosts.first?.label, "from-b")
         XCTAssertEqual(outcome.document.hosts.first?.updatedByDeviceId, deviceB)
     }
@@ -171,6 +175,48 @@ final class SyncMergerTests: XCTestCase {
         )
         XCTAssertEqual(outcome.document.hosts.first?.groupID, groupID)
         XCTAssertEqual(outcome.document.groups.count, 1)
+    }
+
+    func testEmptyRemoteKeepsLocalHosts() {
+        let localHost = host("keep-me", at: t0, device: deviceA)
+        let outcome = SyncMerger.merge(
+            local: doc([localHost], groups: [group("Ops", at: t0, device: deviceA)]),
+            remote: doc(),
+            now: t0.addingTimeInterval(5),
+            writingDeviceId: deviceB
+        )
+        XCTAssertEqual(outcome.document.hosts.map(\.label), ["keep-me"])
+        XCTAssertEqual(outcome.document.groups.map(\.name), ["Ops"])
+        XCTAssertEqual(outcome.conflictCount, 0)
+    }
+
+    func testConflictWordingNamesTheKeptSide() {
+        let newer = SyncMerger.decide(
+            leftUpdatedAt: t0.addingTimeInterval(5),
+            leftDeviceId: "aaa",
+            rightUpdatedAt: t0,
+            rightDeviceId: "zzz",
+            sameContent: false
+        )
+        XCTAssertEqual(newer.kept, .left)
+        XCTAssertEqual(newer.keptSideName, "left")
+        XCTAssertEqual(newer.ruleName, "newer updatedAt")
+        XCTAssertFalse(newer.countsAsConflict)
+
+        let tie = SyncMerger.decide(
+            leftUpdatedAt: t0, leftDeviceId: "device-a", rightUpdatedAt: t0, rightDeviceId: "device-b", sameContent: false)
+        XCTAssertEqual(tie.kept, .right)
+        XCTAssertEqual(tie.ruleName, "deviceId order")
+        XCTAssertTrue(tie.countsAsConflict)
+        XCTAssertEqual(
+            SyncMerger.conflictNotice(tiedItems: 2),
+            "Kept the greater device id for 2 tied items. When updatedAt differs, the newer side is kept."
+        )
+
+        let same = SyncMerger.decide(
+            leftUpdatedAt: t0, leftDeviceId: "b", rightUpdatedAt: t0, rightDeviceId: "a", sameContent: true)
+        XCTAssertEqual(same.kept, .left)
+        XCTAssertFalse(same.countsAsConflict)
     }
 
     func testLibraryRemoveRecordsTombstone() {

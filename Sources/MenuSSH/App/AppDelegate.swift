@@ -11,7 +11,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         HostStoreModel.shared.reload()
         if UITestLaunch.isEnabled {
             // LSUIElement 应用不会自动把 WindowGroup 摆到前面。测试模式下一轮再激活。
-            // 宽窗口钉在屏幕可见区域顶部，编辑表单才不会伸出窗口，XCUITest 才能点到下面的字段。
+            // 宽窗口保持接近生产尺寸（站点窗口 920×580），不再铺满屏幕。
             windowObserver = NotificationCenter.default.addObserver(
                 forName: NSWindow.didBecomeKeyNotification, object: nil, queue: .main
             ) { note in
@@ -38,7 +38,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let visible = screen.visibleFrame
         let wide = window.frame.width > 600
         let width = wide ? min(window.frame.width, 960) : window.frame.width
-        let height = wide ? visible.height - 8 : window.frame.height
+        let height = wide ? min(window.frame.height, min(580, visible.height - 16)) : window.frame.height
         guard width > 200, height > 200 else { return }
         let frame = NSRect(
             x: wide ? visible.minX + 8 : visible.maxX - width - 8,
