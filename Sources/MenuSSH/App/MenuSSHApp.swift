@@ -6,7 +6,6 @@ enum WindowID {
     static let settings = "settings"
 }
 
-@main
 @MainActor
 struct MenuSSHApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate

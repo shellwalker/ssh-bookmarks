@@ -25,6 +25,8 @@ public enum SettingsItemID: String, CaseIterable, Identifiable, Sendable {
     // 站点
     case importSSHConfig
     case dataFile
+    case sync
+    case syncFolder
     // 关于
     case version
     case sourceCode
@@ -66,6 +68,12 @@ public enum SettingsCatalog {
         SettingsItem(
             id: .dataFile, pane: .hosts, group: 0,
             keywords: ["data", "file", "json", "finder", "backup", "keychain", "数据", "文件", "备份", "钥匙串"]),
+        SettingsItem(
+            id: .sync, pane: .hosts, group: 1,
+            keywords: ["sync", "icloud", "cloud", "同步", "云盘", "明文", "主机名"]),
+        SettingsItem(
+            id: .syncFolder, pane: .hosts, group: 1,
+            keywords: ["sync", "folder", "icloud", "dropbox", "同步", "文件夹", "目录"]),
         SettingsItem(id: .version, pane: .about, group: 0, keywords: ["version", "about", "update", "版本", "关于"]),
         SettingsItem(id: .sourceCode, pane: .about, group: 0, keywords: ["source", "github", "code", "源码", "源代码"]),
     ]

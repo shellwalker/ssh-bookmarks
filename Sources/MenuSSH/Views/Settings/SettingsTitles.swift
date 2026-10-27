@@ -92,6 +92,8 @@ extension SettingsItemID {
         case .automationPermission: return "Automation Permission"
         case .importSSHConfig: return "Import ~/.ssh/config"
         case .dataFile: return "Data File"
+        case .sync: return "Sync"
+        case .syncFolder: return "Sync Folder"
         case .version: return "Version"
         case .sourceCode: return "Source Code"
         }
@@ -113,6 +115,8 @@ extension SettingsItemID {
                 "Terminal, iTerm2 and Ghostty are controlled via AppleScript. If launching fails, allow MenuSSH under Privacy & Security › Automation."
         case .importSSHConfig: return "Adds Host entries that are not in MenuSSH yet"
         case .dataFile: return "Hosts are stored as JSON; passwords live in the Keychain"
+        case .sync: return "Sync is off. Hosts stay on this Mac."
+        case .syncFolder: return "Default: iCloud Drive/MenuSSH"
         case .version, .sourceCode: return nil
         }
     }

@@ -2,19 +2,47 @@ import Foundation
 
 /// 持久化到 hosts.json 的完整数据。
 public struct HostLibrary: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 1
+    public static let currentSchemaVersion = 2
 
     public var schemaVersion: Int
     public var groups: [HostGroup]
     public var hosts: [SSHHost]
+    /// 删除记录。同步关闭时也留在本机，避免以后打开同步时把已删站点从另一台机器拉回来。
+    public var tombstones: [SyncTombstone]
 
-    public init(schemaVersion: Int = HostLibrary.currentSchemaVersion, groups: [HostGroup] = [], hosts: [SSHHost] = []) {
+    public init(
+        schemaVersion: Int = HostLibrary.currentSchemaVersion,
+        groups: [HostGroup] = [],
+        hosts: [SSHHost] = [],
+        tombstones: [SyncTombstone] = []
+    ) {
         self.schemaVersion = schemaVersion
         self.groups = groups
         self.hosts = hosts
+        self.tombstones = tombstones
     }
 
     public static let empty = HostLibrary()
+
+    private enum CodingKeys: String, CodingKey {
+        case schemaVersion, groups, hosts, tombstones
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = try c.decodeIfPresent(Int.self, forKey: .schemaVersion) ?? HostLibrary.currentSchemaVersion
+        groups = try c.decodeIfPresent([HostGroup].self, forKey: .groups) ?? []
+        hosts = try c.decodeIfPresent([SSHHost].self, forKey: .hosts) ?? []
+        tombstones = try c.decodeIfPresent([SyncTombstone].self, forKey: .tombstones) ?? []
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(schemaVersion, forKey: .schemaVersion)
+        try c.encode(groups, forKey: .groups)
+        try c.encode(hosts, forKey: .hosts)
+        try c.encode(tombstones, forKey: .tombstones)
+    }
 }
 
 /// 菜单栏面板 / 站点列表中的一个分区。
@@ -96,6 +124,10 @@ public extension HostLibrary {
     }
 
     mutating func upsert(_ host: SSHHost) {
+        tombstones.removeAll { tomb in
+            tomb.kind == .host && tomb.id == host.id
+                && !SyncMerger.tombstoneBeats(tomb, updatedAt: host.updatedAt, deviceId: host.updatedByDeviceId)
+        }
         if let idx = hosts.firstIndex(where: { $0.id == host.id }) {
             hosts[idx] = host
         } else {
@@ -103,8 +135,9 @@ public extension HostLibrary {
         }
     }
 
-    mutating func removeHost(id: UUID) {
+    mutating func removeHost(id: UUID, now: Date = Date(), deviceId: String? = nil) {
         hosts.removeAll { $0.id == id }
+        recordTombstone(id: id, kind: .host, now: now, deviceId: deviceId)
     }
 
     mutating func upsert(_ group: HostGroup) {
@@ -116,14 +149,36 @@ public extension HostLibrary {
     }
 
     /// 删除分组时，其中的站点移动到“未分组”，子分组提升一级。
-    mutating func removeGroup(id: UUID) {
+    mutating func removeGroup(id: UUID, now: Date = Date(), deviceId: String? = nil) {
         let parent = groups.first(where: { $0.id == id })?.parentID
         groups.removeAll { $0.id == id }
         for i in groups.indices where groups[i].parentID == id {
             groups[i].parentID = parent
+            groups[i].updatedAt = now
+            groups[i].updatedByDeviceId = deviceId ?? groups[i].updatedByDeviceId
         }
         for i in hosts.indices where hosts[i].groupID == id {
             hosts[i].groupID = nil
+            hosts[i].updatedAt = now
+            hosts[i].updatedByDeviceId = deviceId ?? hosts[i].updatedByDeviceId
         }
+        recordTombstone(id: id, kind: .group, now: now, deviceId: deviceId)
+    }
+
+    mutating func recordTombstone(id: UUID, kind: SyncTombstone.Kind, now: Date, deviceId: String?) {
+        if let existing = tombstones.first(where: { $0.id == id && $0.kind == kind }),
+            SyncMerger.tombstoneBeats(existing, updatedAt: now, deviceId: deviceId)
+        {
+            return
+        }
+        tombstones.removeAll { $0.id == id && $0.kind == kind }
+        tombstones.append(SyncTombstone(id: id, kind: kind, deletedAt: now, deviceId: deviceId))
+    }
+
+    /// 丢掉超过保留期的墓碑。
+    public func pruningTombstones(now: Date) -> HostLibrary {
+        var copy = self
+        copy.tombstones = SyncMerger.prune(tombstones, now: now)
+        return copy
     }
 }
