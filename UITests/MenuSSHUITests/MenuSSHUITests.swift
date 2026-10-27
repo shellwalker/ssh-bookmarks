@@ -213,9 +213,14 @@ final class MenuSSHUITests: XCTestCase {
         let downward = element.frame.maxY > viewport.maxY - 4
         let upward = element.frame.minY < viewport.minY + 4
         guard downward || upward else { return false }
-        // 拖动滚动视图不会带动 SwiftUI Form。滚轮事件才会。
-        scroll.scroll(byDeltaX: 0, deltaY: downward ? -250 : 250)
-        Thread.sleep(forTimeInterval: 0.3)
+        // 拖动滚动视图不会带动 SwiftUI Form。先发滚轮，没动再按 Page Down。
+        let before = element.frame.minY
+        scroll.scroll(byDeltaX: 0, deltaY: downward ? -350 : 350)
+        Thread.sleep(forTimeInterval: 0.25)
+        if abs(element.frame.minY - before) < 2 {
+            app.typeKey(XCUIKeyboardKey.pageDown, modifierFlags: downward ? [] : .shift)
+            Thread.sleep(forTimeInterval: 0.25)
+        }
         return true
     }
 
