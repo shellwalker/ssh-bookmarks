@@ -619,7 +619,10 @@ struct HostEditorView: View {
         case .missingPrivateKey:
             return String(localized: "This private key file is missing. ssh will not be able to use it.")
         case .permissionsTooOpen:
-            return String(localized: permissionsWarning)
+            return String(
+                localized:
+                    "This private key is readable by the group or by other users. ssh refuses keys whose permissions are broader than 0600."
+            )
         }
     }
 }
@@ -634,8 +637,6 @@ private let extraOptionHint =
     "Keepalive and ControlMaster are best set in ~/.ssh/config. Options here apply only to this host."
 private let startupSecretWarning =
     "Startup command looks like it contains a password. It is stored in the hosts file, not the Keychain."
-private let permissionsWarning =
-    "This private key is readable by the group or by other users. ssh refuses keys whose permissions are broader than 0600."
 private let copyIDConfirmText = """
     MenuSSH will open your terminal and run ssh-copy-id there. \
     You confirm the login in that window. It is never run in the background.

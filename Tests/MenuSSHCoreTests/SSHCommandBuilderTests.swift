@@ -145,7 +145,7 @@ final class SSHCommandBuilderTests: XCTestCase {
     func testHostnameAndUsernameRejectSpaces() {
         XCTAssertThrowsError(try builder.argv(for: SSHHost(label: "x", hostname: " bad host ", username: "alice")))
         XCTAssertThrowsError(try builder.argv(for: SSHHost(label: "x", hostname: "example.com", username: "bad user")))
-        let host = SSHHost(label: "x", hostname: " example.com ", username: " alice ", port: 22)
+        let host = SSHHost(label: "x", hostname: " example.com ", port: 22, username: " alice ")
         XCTAssertEqual(try builder.arguments(for: host), ["-l", "alice", "-p", "22", "--", "example.com"])
     }
 

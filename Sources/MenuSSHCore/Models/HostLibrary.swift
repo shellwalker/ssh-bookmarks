@@ -121,7 +121,7 @@ public extension HostLibrary {
     public static let recentSectionLimit = 8
 
     /// 面板分区标题。顶层分组只有自己的名字；子分组是「父 / 子」。
-    public func groupPath(id: UUID) -> String {
+    func groupPath(id: UUID) -> String {
         var names: [String] = []
         var current: UUID? = id
         var seen = Set<UUID>()
