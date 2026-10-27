@@ -1,0 +1,62 @@
+name: MenuSSHUI
+options:
+  bundleIdPrefix: com.shellwalker
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+settings:
+  MACOSX_DEPLOYMENT_TARGET: "14.0"
+  CODE_SIGN_STYLE: Manual
+  CODE_SIGN_IDENTITY: "-"
+  CODE_SIGNING_REQUIRED: NO
+  ENABLE_HARDENED_RUNTIME: NO
+targets:
+  MenuSSH:
+    type: application
+    platform: macOS
+    sources:
+      - path: UITests/HostStub.swift
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.shellwalker.MenuSSH
+      GENERATE_INFOPLIST_FILE: NO
+      INFOPLIST_FILE: Resources/Info.plist
+      CODE_SIGN_ENTITLEMENTS: Resources/MenuSSH.entitlements
+    postBuildScripts:
+      - name: Use SwiftPM app bundle
+        script: |
+          set -euo pipefail
+          APP="${SRCROOT}/build/MenuSSH.app"
+          DEST="${TARGET_BUILD_DIR}/${FULL_PRODUCT_NAME}"
+          if [[ ! -d "$APP" ]]; then
+            echo "missing $APP — run Scripts/build_app.sh first" >&2
+            exit 1
+          fi
+          rm -rf "$DEST"
+          cp -R "$APP" "$DEST"
+          codesign --force --sign - --entitlements "${SRCROOT}/Resources/MenuSSH.entitlements" "$DEST"
+  MenuSSHUITests:
+    type: bundle.ui-testing
+    platform: macOS
+    sources:
+      - path: UITests/MenuSSHUITests
+    dependencies:
+      - target: MenuSSH
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.shellwalker.MenuSSHUITests
+      GENERATE_INFOPLIST_FILE: YES
+      TEST_TARGET_NAME: MenuSSH
+      CODE_SIGN_STYLE: Manual
+      CODE_SIGN_IDENTITY: "-"
+schemes:
+  MenuSSHUI:
+    build:
+      targets:
+        MenuSSH: all
+        MenuSSHUITests: [test]
+    test:
+      targets:
+        - name: MenuSSHUITests
+          environmentVariables:
+            - variable: MENUSH_SCREENSHOT_DIR
+              value: $(SRCROOT)/build/ui-screenshots
+              isEnabled: true

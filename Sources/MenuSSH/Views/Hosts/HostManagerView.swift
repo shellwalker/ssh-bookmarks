@@ -30,6 +30,7 @@ struct HostManagerView: View {
         } detail: {
             hostList
         }
+        .modifier(UITestContainer(identifier: UITestID.hosts))
         .searchable(text: $query, placement: .toolbar, prompt: Text("Search hosts"))
         .toolbar {
             ToolbarItemGroup {
@@ -38,6 +39,7 @@ struct HostManagerView: View {
                 } label: {
                     Label("New Host", systemImage: "plus")
                 }
+                .accessibilityIdentifier(UITestID.hostsNew)
                 .keyboardShortcut("n", modifiers: .command)
                 Button {
                     hosts.importSSHConfig()
@@ -51,6 +53,7 @@ struct HostManagerView: View {
                 } label: {
                     Label("Settings", systemImage: "gearshape")
                 }
+                .accessibilityIdentifier(UITestID.hostsSettings)
             }
         }
         .sheet(item: $editingHost) { host in
@@ -67,7 +70,9 @@ struct HostManagerView: View {
         }
         .alert("New Group", isPresented: $showingNewGroup) {
             TextField("Name", text: $groupNameDraft)
+                .accessibilityIdentifier(UITestID.groupName)
             Button("Create") { commitGroupName(nil) }
+                .accessibilityIdentifier(UITestID.groupCreate)
             Button("Cancel", role: .cancel) { groupNameDraft = "" }
         }
         // TextField 只能放在 isPresented 版本的 alert 里；presenting 版本在 macOS 上不接受文本框。
@@ -136,6 +141,7 @@ struct HostManagerView: View {
                     } label: {
                         Text(verbatim: String(repeating: "  ", count: entry.depth) + entry.group.name)
                     }
+                    .accessibilityIdentifier(UITestID.groupNest(entry.group.name))
                     .disabled(hosts.library.groupIDs(inTreeOf: group.id).contains(entry.group.id))
                 }
             }
@@ -179,6 +185,7 @@ struct HostManagerView: View {
                     }
                     .padding(.leading, CGFloat(entry.depth) * 12)
                     .badge(hosts.library.count(for: .group(group.id)))
+                    .accessibilityIdentifier(UITestID.group(group.name))
                     .tag(HostFilter.group(group.id))
                     .contextMenu {
                         Button("Rename…") {
@@ -220,6 +227,7 @@ struct HostManagerView: View {
             } label: {
                 Label("New Group", systemImage: "folder.badge.plus")
             }
+            .accessibilityIdentifier(UITestID.hostsNewGroup)
             .buttonStyle(.bordered)
             .controlSize(.small)
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -287,6 +295,7 @@ struct HostManagerView: View {
         Button("Connect") { hosts.connect(host, settings: settings) }
         Divider()
         Button("Edit…") { editingHost = host }
+            .accessibilityIdentifier(UITestID.hostEdit)
         Button("Duplicate") {
             if let copy = hosts.duplicate(host) { selection = copy.id }
         }

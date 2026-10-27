@@ -38,12 +38,16 @@ struct HostEditorView: View {
             Form {
                 Section("General") {
                     TextField("Label", text: $draft.label, prompt: Text("My Server"))
+                        .accessibilityIdentifier(UITestID.editorLabel)
                     TextField("Host", text: $draft.hostname, prompt: Text("example.com or ssh-config alias"))
                         .foregroundStyle(errorField == .hostname ? Color.red : Color.primary)
+                        .accessibilityIdentifier(UITestID.editorHost)
                     TextField("Port", text: $portText, prompt: Text(verbatim: "22"))
                         .foregroundStyle(errorField == .port ? Color.red : Color.primary)
+                        .accessibilityIdentifier(UITestID.editorPort)
                     TextField("Username", text: $draft.username, prompt: Text(verbatim: "root"))
                         .foregroundStyle(errorField == .username ? Color.red : Color.primary)
+                        .accessibilityIdentifier(UITestID.editorUser)
                     Picker("Group", selection: $draft.groupID) {
                         Text("None").tag(UUID?.none)
                         ForEach(outline) { entry in
@@ -88,6 +92,7 @@ struct HostEditorView: View {
                         ), prompt: Text(verbatim: "user@bastion:22,edge")
                     )
                     .foregroundStyle(errorField == .jumpHost ? Color.red : Color.primary)
+                    .accessibilityIdentifier(UITestID.editorJump)
                     Text("Comma-separated hops, nearest first. Example: user@bastion:22,edge")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -99,9 +104,11 @@ struct HostEditorView: View {
                                 } label: {
                                     Text(verbatim: other.label)
                                 }
+                                .accessibilityIdentifier(UITestID.jumpPick(other.label))
                                 .disabled(JumpHostSpec.specification(for: other) == nil)
                             }
                         }
+                        .accessibilityIdentifier(UITestID.editorUseJump)
                     }
                     TextField(
                         "Startup Command",
@@ -109,10 +116,12 @@ struct HostEditorView: View {
                         prompt: Text(verbatim: "cd /app && tmux attach")
                     )
                     .foregroundStyle(errorField == .startupCommand ? Color.red : Color.primary)
+                    .accessibilityIdentifier(UITestID.editorStartup)
                     Text("One line typed after the ssh command. Control characters are rejected.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Toggle("Agent Forwarding", isOn: $draft.forwardAgent)
+                        .accessibilityIdentifier(UITestID.editorForwardAgent)
                     Text("Adds -o ForwardAgent=yes so the remote host can use your local agent.")
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -134,8 +143,10 @@ struct HostEditorView: View {
                 Spacer()
                 Button("Cancel") { dismiss() }
                     .keyboardShortcut(.cancelAction)
+                    .accessibilityIdentifier(UITestID.editorCancel)
                 Button("Save", action: save)
                     .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier(UITestID.editorSave)
                     .disabled(draft.hostname.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding(12)
@@ -189,6 +200,7 @@ struct HostEditorView: View {
                 forwardDraft = PortForward(
                     kind: .local, listenPort: 8080, destinationHost: "127.0.0.1", destinationPort: 80)
             }
+            .accessibilityIdentifier(UITestID.editorAddForward)
         }
     }
 
@@ -388,9 +400,12 @@ private struct PortForwardEditor: View {
                     }
                     TextField("Bind Address", text: $bindAddress, prompt: Text(verbatim: "127.0.0.1"))
                     TextField("Listen Port", text: $listenPort, prompt: Text(verbatim: "8080"))
+                        .accessibilityIdentifier(UITestID.forwardListen)
                     if kind != .dynamic {
                         TextField("Destination Host", text: $destinationHost, prompt: Text(verbatim: "127.0.0.1"))
+                            .accessibilityIdentifier(UITestID.forwardDestinationHost)
                         TextField("Destination Port", text: $destinationPort, prompt: Text(verbatim: "80"))
+                            .accessibilityIdentifier(UITestID.forwardDestinationPort)
                     }
                 }
             }
@@ -407,6 +422,7 @@ private struct PortForwardEditor: View {
                     .keyboardShortcut(.cancelAction)
                 Button("Save", action: save)
                     .keyboardShortcut(.defaultAction)
+                    .accessibilityIdentifier(UITestID.forwardSave)
             }
             .padding(12)
         }

@@ -22,15 +22,7 @@ struct MenuSSHApp: App {
     }
 
     var body: some Scene {
-        // 第一个 Scene 是菜单栏常驻面板（window 风格，可放搜索框和列表）。
-        MenuBarExtra {
-            MenuBarContentView()
-                .environmentObject(hostStore)
-                .environmentObject(settings)
-        } label: {
-            Image(systemName: "terminal")
-        }
-        .menuBarExtraStyle(.window)
+        panelScene
 
         // 站点管理主窗口（Termius 风格：左侧分组，右侧站点列表）。
         Window("MenuSSH", id: WindowID.hosts) {
@@ -71,6 +63,28 @@ struct MenuSSHApp: App {
                 }
                 .keyboardShortcut("q", modifiers: .command)
             }
+        }
+    }
+
+    /// 正式版是菜单栏面板。XCUITest 点不开 MenuBarExtra，测试模式改用普通窗口承载同一视图。
+    @SceneBuilder
+    private var panelScene: some Scene {
+        if UITestLaunch.isEnabled {
+            WindowGroup(id: "ui-test-panel") {
+                MenuBarContentView()
+                    .environmentObject(hostStore)
+                    .environmentObject(settings)
+            }
+            .defaultSize(width: 380, height: 520)
+        } else {
+            MenuBarExtra {
+                MenuBarContentView()
+                    .environmentObject(hostStore)
+                    .environmentObject(settings)
+            } label: {
+                Image(systemName: "terminal")
+            }
+            .menuBarExtraStyle(.window)
         }
     }
 }

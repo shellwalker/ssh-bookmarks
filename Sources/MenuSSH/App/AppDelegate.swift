@@ -7,6 +7,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppearanceController.apply(settings.appearance)
         DockIconController.shared.start(mode: settings.dockIconMode)
         HostStoreModel.shared.reload()
+        if UITestLaunch.isEnabled {
+            // LSUIElement 应用不会自动把 WindowGroup 摆到前面。测试模式下一轮再激活。
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    AppActivation.bringToFront()
+                    for window in NSApp.windows {
+                        window.makeKeyAndOrderFront(nil)
+                    }
+                }
+            }
+        }
     }
 
     /// 菜单栏应用：关闭最后一个窗口不退出。

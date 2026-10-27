@@ -5,7 +5,7 @@ import MenuSSHCore
 /// 应用设置，持久化到 UserDefaults。密码等敏感信息不在这里。
 @MainActor
 final class SettingsStore: ObservableObject {
-    static let shared = SettingsStore()
+    static let shared = SettingsStore(defaults: UITestLaunch.userDefaults())
 
     private enum Keys {
         static let appearance = "appearance"
@@ -119,6 +119,14 @@ final class SettingsStore: ObservableObject {
         syncEnabled = defaults.object(forKey: Keys.syncEnabled) as? Bool ?? false
         let storedFolder = defaults.string(forKey: Keys.syncFolder)
         syncFolderPath = (storedFolder?.isEmpty == false) ? storedFolder : nil
+        if UITestLaunch.isEnabled {
+            syncEnabled = false
+            closePanelAfterConnect = false
+            dockIconMode = .visible
+            if let forced = UITestLaunch.forcedAppearance {
+                appearance = forced
+            }
+        }
     }
 
     /// 修改语言后“立即重启”：1 秒后由 /bin/sh 重新打开本应用，然后退出。

@@ -73,6 +73,10 @@ struct TerminalLauncher {
     }
 
     private func launchArgv(_ argv: [String], startupCommand: String?) throws -> TerminalFallbackNotice? {
+        if let url = UITestLaunch.fakeTerminalLogURL {
+            try UITestLaunch.appendFakeTerminalLog(url: url, argv: argv, startup: startupCommand)
+            return nil
+        }
         let installed = Set(TerminalApp.allCases.filter(Self.isInstalled))
         let resolution = TerminalFallback.resolve(preferred: terminal, installed: installed)
         let chosen = resolution.terminal

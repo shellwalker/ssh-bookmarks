@@ -44,6 +44,7 @@ struct MenuBarContentView: View {
             footer
         }
         .frame(width: 340)
+        .modifier(UITestContainer(identifier: UITestID.panel))
         .background(WindowReader { window in keyMonitor.attach(to: window) })
         .onAppear {
             keyMonitor.onKey = { key in handle(key) }
@@ -67,6 +68,7 @@ struct MenuBarContentView: View {
             TextField("Search hosts", text: $query)
                 .textFieldStyle(.plain)
                 .focused($searchFocused)
+                .accessibilityIdentifier(UITestID.panelSearch)
             if !query.isEmpty {
                 Button {
                     query = ""
@@ -136,6 +138,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Manage Hosts", systemImage: "square.grid.2x2")
             }
+            .accessibilityIdentifier(UITestID.panelManage)
             .font(.system(size: 12))
             Spacer(minLength: 8)
             Button {
@@ -143,6 +146,7 @@ struct MenuBarContentView: View {
             } label: {
                 Label("Settings", systemImage: "gearshape")
             }
+            .accessibilityIdentifier(UITestID.panelSettings)
             .font(.system(size: 12))
             Menu {
                 Button("About MenuSSH") { openSettings(pane: .about) }
@@ -223,7 +227,10 @@ struct MenuBarContentView: View {
     private func open(_ id: String) {
         openWindow(id: id)
         AppActivation.bringToFront()
-        keyMonitor.close(using: dismiss)
+        // 测试模式的面板是普通窗口，关掉就没法再操作；菜单栏面板仍在打开窗口后收起。
+        if !UITestLaunch.isEnabled {
+            keyMonitor.close(using: dismiss)
+        }
     }
 
     private func openSettings(pane: SettingsPaneID?) {

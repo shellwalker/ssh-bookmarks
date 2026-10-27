@@ -16,7 +16,9 @@ struct SettingsWindowView: View {
     var body: some View {
         NavigationSplitView {
             List(SettingsPaneID.allCases, selection: $pane) { pane in
-                Label(pane.title, systemImage: pane.symbol).tag(pane)
+                Label(pane.title, systemImage: pane.symbol)
+                    .accessibilityIdentifier(UITestID.settingsPane(pane.rawValue))
+                    .tag(pane)
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
         } detail: {
@@ -34,6 +36,7 @@ struct SettingsWindowView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .modifier(UITestContainer(identifier: UITestID.settings))
         .searchable(text: $searchText, placement: .sidebar, prompt: Text("Search Settings"))
         .onAppear {
             AppActivation.bringToFront()

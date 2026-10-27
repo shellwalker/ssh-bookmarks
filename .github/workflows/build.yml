@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  pull-requests: write
 
 concurrency:
   group: build-${{ github.ref }}
@@ -39,7 +40,7 @@ jobs:
       - name: Lint (swift-format)
         run: |
           if xcrun --find swift-format > /dev/null 2>&1; then
-            xcrun swift-format lint --recursive Sources Tests Package.swift
+            xcrun swift-format lint --recursive Sources Tests UITests Package.swift
           else
             echo "swift-format not available in this Xcode, skipping"
           fi
@@ -64,3 +65,125 @@ jobs:
           path: dist/
           if-no-files-found: error
           retention-days: 14
+
+  ui:
+    name: UI automation and screenshots
+    runs-on: macos-14
+    timeout-minutes: 25
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode_16*.app' | sort -V | tail -n 1)"
+          if [[ -n "$XCODE" ]]; then
+            sudo xcode-select -s "$XCODE"
+          fi
+          xcodebuild -version
+          uname -m
+
+      - name: UI tests
+        run: Scripts/ci_ui_tests.sh
+
+      - name: Screenshot summary
+        if: always()
+        run: |
+          {
+            echo "## UI screenshots"
+            echo
+            echo "不做像素比对（菜单栏时钟和动画会导致误红）。完整图片在 artifact \`ui-screenshots\`。"
+            echo "运行：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            if [[ -f build/ui-screenshots/index.md ]]; then
+              cat build/ui-screenshots/index.md
+            else
+              echo "没有生成截图索引。"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Comment screenshot index on PR
+        if: always() && github.event_name == 'pull_request' && hashFiles('build/ui-screenshots/index.md') != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          BODY_FILE="$(mktemp)"
+          {
+            echo "<!-- menush-ui-screenshots -->"
+            echo "UI 截图索引（图片在本次运行的 artifact \`ui-screenshots\`，私有 artifact 不能直接嵌进评论）。"
+            echo
+            echo "运行：${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+            echo
+            cat build/ui-screenshots/index.md
+          } > "$BODY_FILE"
+          PR="${{ github.event.pull_request.number }}"
+          EXISTING="$(gh api "repos/${{ github.repository }}/issues/${PR}/comments" \
+            --jq '.[] | select(.body | startswith("<!-- menush-ui-screenshots -->")) | .id' | head -n 1)"
+          if [[ -n "$EXISTING" ]]; then
+            gh api -X PATCH "repos/${{ github.repository }}/issues/comments/${EXISTING}" -F body=@"$BODY_FILE" >/dev/null
+          else
+            gh pr comment "$PR" --body-file "$BODY_FILE"
+          fi
+
+      - name: Upload screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-screenshots
+          path: build/ui-screenshots/
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload UI failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ui-xcresult
+          path: |
+            build/ui-results.xcresult
+            build/ui-derived/Logs
+          if-no-files-found: ignore
+          retention-days: 7
+
+  e2e:
+    name: SSH and sync end-to-end
+    runs-on: macos-14
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Select Xcode
+        run: |
+          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode_16*.app' | sort -V | tail -n 1)"
+          if [[ -n "$XCODE" ]]; then
+            sudo xcode-select -s "$XCODE"
+          fi
+          swift --version
+          uname -m
+
+      - name: Start temporary sshd
+        run: Scripts/ci_sshd_fixture.sh start
+
+      - name: Integration tests
+        run: |
+          set -a
+          # shellcheck disable=SC1091
+          source build/sshd-fixture.env
+          set +a
+          swift test --filter Integration
+
+      - name: Stop temporary sshd
+        if: always()
+        run: Scripts/ci_sshd_fixture.sh stop
+
+      - name: Upload sshd logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshd-logs
+          path: |
+            /tmp/menush-ci-sshd/*.log
+            /tmp/menush-ci-sshd/*.conf
+          if-no-files-found: ignore
+          retention-days: 7
