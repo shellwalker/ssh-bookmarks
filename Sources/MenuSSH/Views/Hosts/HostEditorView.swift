@@ -151,7 +151,7 @@ struct HostEditorView: View {
             }
             .padding(12)
         }
-        .frame(width: 520, height: 680)
+        .frame(width: 520, height: UITestLaunch.isEnabled ? 960 : 680)
         .sheet(item: $forwardDraft) { forward in
             PortForwardEditor(forward: forward) { saved in
                 if let index = draft.portForwards.firstIndex(where: { $0.id == saved.id }) {

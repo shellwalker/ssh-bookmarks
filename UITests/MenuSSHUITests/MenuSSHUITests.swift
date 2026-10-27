@@ -213,11 +213,8 @@ final class MenuSSHUITests: XCTestCase {
         let downward = element.frame.maxY > viewport.maxY - 4
         let upward = element.frame.minY < viewport.minY + 4
         guard downward || upward else { return false }
-        let startY: CGFloat = downward ? 0.75 : 0.35
-        let endY: CGFloat = downward ? 0.45 : 0.65
-        let start = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: startY))
-        let end = scroll.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: endY))
-        start.press(forDuration: 0.05, thenDragTo: end)
+        // 拖动滚动视图不会带动 SwiftUI Form。滚轮事件才会。
+        scroll.scroll(byDeltaX: 0, deltaY: downward ? -250 : 250)
         Thread.sleep(forTimeInterval: 0.3)
         return true
     }

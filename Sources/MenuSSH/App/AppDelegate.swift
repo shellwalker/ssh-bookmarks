@@ -36,8 +36,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func placeWideWindowForUITest(_ window: NSWindow) {
         guard window.frame.width > 600, let screen = window.screen ?? NSScreen.main else { return }
         let visible = screen.visibleFrame
-        let height = min(max(window.frame.height, 900), visible.height - 8)
-        let width = min(window.frame.width, visible.width - 16)
+        let height = visible.height - 8
+        let width = min(max(window.frame.width, 920), visible.width - 16)
         let frame = NSRect(x: visible.minX + 8, y: visible.maxY - height - 8, width: width, height: height)
         let sameOrigin = abs(window.frame.minY - frame.minY) < 2 && abs(window.frame.height - frame.height) < 2
         if sameOrigin { return }
