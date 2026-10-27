@@ -10,8 +10,17 @@ enum WindowID {
 @MainActor
 struct MenuSSHApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var hostStore = HostStoreModel.shared
-    @StateObject private var settings = SettingsStore.shared
+    /// `openWindow` is delivered to the App, not to views built inside `.commands`.
+    @Environment(\.openWindow) private var openWindow
+    @StateObject private var hostStore: HostStoreModel
+    @StateObject private var settings: SettingsStore
+
+    init() {
+        // The same singletons AppDelegate uses. Initializing the wrapper here keeps
+        // the lookup on the main actor; a default-value expression is nonisolated.
+        _hostStore = StateObject(wrappedValue: HostStoreModel.shared)
+        _settings = StateObject(wrappedValue: SettingsStore.shared)
+    }
 
     var body: some Scene {
         // 第一个 Scene 是菜单栏常驻面板（window 风格，可放搜索框和列表）。
@@ -40,5 +49,29 @@ struct MenuSSHApp: App {
                 .environmentObject(settings)
         }
         .defaultSize(width: 860, height: 560)
+        .commands {
+            // openWindow 挂在 App 上：嵌在 commands 里的子 View 拿不到这个 environment。
+            CommandGroup(replacing: .appInfo) {
+                Button("About MenuSSH") {
+                    settings.pendingSettingsPane = .about
+                    openWindow(id: WindowID.settings)
+                    AppActivation.bringToFront()
+                }
+            }
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") {
+                    settings.pendingSettingsPane = nil
+                    openWindow(id: WindowID.settings)
+                    AppActivation.bringToFront()
+                }
+                .keyboardShortcut(",", modifiers: .command)
+            }
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit MenuSSH") {
+                    NSApp.terminate(nil)
+                }
+                .keyboardShortcut("q", modifiers: .command)
+            }
+        }
     }
 }

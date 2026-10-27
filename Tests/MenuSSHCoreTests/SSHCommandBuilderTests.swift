@@ -81,8 +81,8 @@ final class SSHCommandBuilderTests: XCTestCase {
     }
 
     func testCommandLineQuotesUnsafeValues() throws {
-        let host = SSHHost(label: "q", hostname: "h", username: "o'brien", authMethod: .publicKey, identityFile: "/Users/me/My Keys/id")
+        let host = SSHHost(label: "q", hostname: "h", username: "deploy", authMethod: .publicKey, identityFile: "/Users/me/O'Brien Keys/id")
         let line = try builder.commandLine(for: host)
-        XCTAssertEqual(line, "/usr/bin/ssh -l 'o'\\''brien' -i '/Users/me/My Keys/id' -o IdentitiesOnly=yes -- h")
+        XCTAssertEqual(line, "/usr/bin/ssh -l deploy -i '/Users/me/O'\\''Brien Keys/id' -o IdentitiesOnly=yes -- h")
     }
 }

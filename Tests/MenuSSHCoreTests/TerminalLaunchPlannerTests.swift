@@ -42,6 +42,17 @@ final class TerminalLaunchPlannerTests: XCTestCase {
         )
     }
 
+    func testMechanismIgnoresVersionExceptGhostty() {
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .terminal, version: "2.14"), .appleScript)
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .terminal, version: nil), .appleScript)
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .iTerm2, version: "3.4.0"), .appleScript)
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .iTerm2, version: "3.5.10"), .appleScript)
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .ghostty, version: "1.2.9"), .legacyGhosttyProcess)
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .ghostty, version: nil), .legacyGhosttyProcess)
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .ghostty, version: "1.3.0"), .appleScript)
+        XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .ghostty, version: "1.3.1"), .appleScript)
+    }
+
     func testVersionCompare() {
         XCTAssertEqual(TerminalLaunchPlanner.compareVersions("1.3.0", "1.3.0"), .orderedSame)
         XCTAssertEqual(TerminalLaunchPlanner.compareVersions("1.2.10", "1.3.0"), .orderedAscending)

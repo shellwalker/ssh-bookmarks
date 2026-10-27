@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import MenuSSHCore
 
 /// 站点数据的 UI 状态层：包装 HostFileStore，提供增删改查、搜索与连接。
@@ -8,6 +9,8 @@ final class HostStoreModel: ObservableObject {
 
     @Published private(set) var library: HostLibrary = .empty
     @Published var lastError: String?
+    /// 回退到别的终端时的说明。不是错误，连接已经发出。
+    @Published var lastNotice: String?
 
     let fileStore: HostFileStore
     private let keychain = KeychainService()
@@ -27,7 +30,7 @@ final class HostStoreModel: ObservableObject {
         do {
             library = try fileStore.load()
         } catch {
-            lastError = String(localized: "Failed to read hosts file: \(error.localizedDescription)")
+            lastError = L10n.format("Failed to read hosts file: %@", error.localizedDescription)
         }
     }
 
@@ -35,7 +38,7 @@ final class HostStoreModel: ObservableObject {
         do {
             try fileStore.save(library)
         } catch {
-            lastError = String(localized: "Failed to save hosts file: \(error.localizedDescription)")
+            lastError = L10n.format("Failed to save hosts file: %@", error.localizedDescription)
         }
     }
 
@@ -51,6 +54,10 @@ final class HostStoreModel: ObservableObject {
 
     func host(id: UUID) -> SSHHost? {
         library.hosts.first { $0.id == id }
+    }
+
+    func hosts(filter: HostFilter, query: String) -> [SSHHost] {
+        library.hosts(filter: filter, query: query)
     }
 
     func groupName(for id: UUID?) -> String? {
@@ -79,15 +86,45 @@ final class HostStoreModel: ObservableObject {
         save(h)
     }
 
+    /// 复制站点，返回副本（名称加“副本”后缀）。
     @discardableResult
-    func addGroup(named name: String) -> HostGroup {
+    func duplicate(_ host: SSHHost) -> SSHHost? {
+        let copy = library.duplicateHost(id: host.id, labelSuffix: String(localized: " copy"))
+        persist()
+        return copy
+    }
+
+    func move(_ host: SSHHost, toGroup groupID: UUID?) {
+        if library.moveHost(id: host.id, toGroup: groupID) { persist() }
+    }
+
+    enum GroupNameError: LocalizedError {
+        case empty
+        case duplicate(String)
+
+        var errorDescription: String? {
+            switch self {
+            case .empty: return String(localized: "Group name cannot be empty.")
+            case .duplicate(let name): return L10n.format("A group named “%@” already exists.", name)
+            }
+        }
+    }
+
+    @discardableResult
+    func addGroup(named rawName: String) throws -> HostGroup {
+        let name = HostInputParser.normalizedName(rawName)
+        guard !name.isEmpty else { throw GroupNameError.empty }
+        guard !library.hasGroup(named: name) else { throw GroupNameError.duplicate(name) }
         let group = HostGroup(name: name, sortOrder: (library.groups.map(\.sortOrder).max() ?? -1) + 1)
         library.upsert(group)
         persist()
         return group
     }
 
-    func renameGroup(_ group: HostGroup, to name: String) {
+    func renameGroup(_ group: HostGroup, to rawName: String) throws {
+        let name = HostInputParser.normalizedName(rawName)
+        guard !name.isEmpty else { throw GroupNameError.empty }
+        guard !library.hasGroup(named: name, excluding: group.id) else { throw GroupNameError.duplicate(name) }
         var g = group
         g.name = name
         library.upsert(g)
@@ -103,7 +140,7 @@ final class HostStoreModel: ObservableObject {
     @discardableResult
     func importSSHConfig(from url: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh/config")) -> Int {
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
-            lastError = String(localized: "Cannot read \(url.path)")
+            lastError = L10n.format("Cannot read %@", url.path)
             return 0
         }
         let existing = Set(library.hosts.map { $0.hostname.lowercased() })
@@ -119,14 +156,24 @@ final class HostStoreModel: ObservableObject {
     func connect(_ host: SSHHost, settings: SettingsStore) {
         let launcher = TerminalLauncher(sshPath: settings.sshPath, terminal: settings.terminal, openMode: settings.openMode)
         do {
-            try launcher.launch(host)
+            let notice = try launcher.launch(host)
             lastError = nil
+            if let notice {
+                lastNotice = L10n.format(
+                    "%@ is not installed. Opened this session in %@ instead.",
+                    notice.missing.displayName,
+                    notice.used.displayName
+                )
+            } else {
+                lastNotice = nil
+            }
             var h = host
             h.lastConnectedAt = Date()
             library.upsert(h)
             persist()
         } catch {
             lastError = error.localizedDescription
+            lastNotice = nil
         }
     }
 }

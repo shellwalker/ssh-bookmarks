@@ -2,30 +2,31 @@ import AppKit
 import MenuSSHCore
 import SwiftUI
 
-/// 侧边栏筛选项。
-enum HostFilter: Hashable {
-    case all
-    case favorites
-    case group(UUID)
-    case ungrouped
-}
-
-/// 主窗口：左侧“全部 / 收藏 / 分组”，右侧可搜索的站点列表，双击连接。
+/// 主窗口：左侧“全部 / 收藏 / 分组 / 标签”，右侧可搜索的站点列表。双击或 Return 连接。
 @MainActor
 struct HostManagerView: View {
     @EnvironmentObject private var hosts: HostStoreModel
     @EnvironmentObject private var settings: SettingsStore
+    @Environment(\.openWindow) private var openWindow
     @State private var filter: HostFilter? = .all
     @State private var query = ""
     @State private var selection: UUID?
     @State private var editingHost: SSHHost?
-    @State private var newGroupName = ""
+
+    // 分组新建 / 重命名共用一个输入弹窗。
+    @State private var groupNameDraft = ""
     @State private var showingNewGroup = false
+    @State private var renamingGroup: HostGroup?
+    @State private var showingRenameGroup = false
+    @State private var groupError: String?
+
+    @State private var hostPendingDeletion: SSHHost?
+    @State private var groupPendingDeletion: HostGroup?
 
     var body: some View {
         NavigationSplitView {
             sidebar
-                .navigationSplitViewColumnWidth(min: 180, ideal: 210)
+                .navigationSplitViewColumnWidth(min: 190, ideal: 220)
         } detail: {
             hostList
         }
@@ -37,26 +38,78 @@ struct HostManagerView: View {
                 } label: {
                     Label("New Host", systemImage: "plus")
                 }
+                .keyboardShortcut("n", modifiers: .command)
                 Button {
                     hosts.importSSHConfig()
                 } label: {
                     Label("Import ~/.ssh/config", systemImage: "square.and.arrow.down")
                 }
+                Button {
+                    settings.pendingSettingsPane = nil
+                    openWindow(id: WindowID.settings)
+                    AppActivation.bringToFront()
+                } label: {
+                    Label("Settings", systemImage: "gearshape")
+                }
             }
         }
         .sheet(item: $editingHost) { host in
-            HostEditorView(host: host, groups: hosts.library.groups) { saved in
+            HostEditorView(host: host, groups: hosts.library.sortedGroups) { saved in
                 hosts.save(saved)
+                selection = saved.id
             }
         }
         .alert("New Group", isPresented: $showingNewGroup) {
-            TextField("Name", text: $newGroupName)
-            Button("Create") {
-                let name = newGroupName.trimmingCharacters(in: .whitespaces)
-                if !name.isEmpty { hosts.addGroup(named: name) }
-                newGroupName = ""
+            TextField("Name", text: $groupNameDraft)
+            Button("Create") { commitGroupName(nil) }
+            Button("Cancel", role: .cancel) { groupNameDraft = "" }
+        }
+        // TextField 只能放在 isPresented 版本的 alert 里；presenting 版本在 macOS 上不接受文本框。
+        // 分组对象单独保存，按钮触发时仍能拿到被重命名的那一项。
+        .alert("Rename Group", isPresented: $showingRenameGroup) {
+            TextField("Name", text: $groupNameDraft)
+            Button("Rename") {
+                if let group = renamingGroup { commitGroupName(group) }
+                renamingGroup = nil
             }
-            Button("Cancel", role: .cancel) { newGroupName = "" }
+            Button("Cancel", role: .cancel) {
+                groupNameDraft = ""
+                renamingGroup = nil
+            }
+        }
+        .alert(
+            "Cannot Save Group",
+            isPresented: Binding(get: { groupError != nil }, set: { if !$0 { groupError = nil } })
+        ) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(verbatim: groupError ?? "")
+        }
+        .confirmationDialog(
+            "Delete this host?",
+            isPresented: Binding(get: { hostPendingDeletion != nil }, set: { if !$0 { hostPendingDeletion = nil } }),
+            titleVisibility: .visible,
+            presenting: hostPendingDeletion
+        ) { host in
+            Button("Delete", role: .destructive) {
+                hosts.delete(hostID: host.id)
+                if selection == host.id { selection = nil }
+            }
+        } message: { host in
+            Text(verbatim: L10n.format("“%@” and its saved password will be removed.", host.label))
+        }
+        .confirmationDialog(
+            "Delete this group?",
+            isPresented: Binding(get: { groupPendingDeletion != nil }, set: { if !$0 { groupPendingDeletion = nil } }),
+            titleVisibility: .visible,
+            presenting: groupPendingDeletion
+        ) { group in
+            Button("Delete Group", role: .destructive) {
+                hosts.deleteGroup(id: group.id)
+                if filter == .group(group.id) { filter = .all }
+            }
+        } message: { group in
+            Text(verbatim: L10n.format("Hosts in “%@” will be moved to Ungrouped.", group.name))
         }
         .onAppear { AppActivation.bringToFront() }
     }
@@ -66,58 +119,90 @@ struct HostManagerView: View {
         return nil
     }
 
+    private func commitGroupName(_ group: HostGroup?) {
+        let name = groupNameDraft
+        groupNameDraft = ""
+        do {
+            if let group {
+                try hosts.renameGroup(group, to: name)
+            } else {
+                let created = try hosts.addGroup(named: name)
+                filter = .group(created.id)
+            }
+        } catch {
+            groupError = error.localizedDescription
+        }
+    }
+
     // MARK: Sidebar
 
     private var sidebar: some View {
         List(selection: $filter) {
             Section {
-                Label("All Hosts", systemImage: "server.rack").tag(HostFilter.all)
-                Label("Favorites", systemImage: "star").tag(HostFilter.favorites)
+                Label("All Hosts", systemImage: "server.rack")
+                    .badge(hosts.library.hosts.count)
+                    .tag(HostFilter.all)
+                Label("Favorites", systemImage: "star")
+                    .badge(hosts.library.count(for: .favorites))
+                    .tag(HostFilter.favorites)
             }
             Section("Groups") {
-                ForEach(hosts.library.groups.sorted { ($0.sortOrder, $0.name) < ($1.sortOrder, $1.name) }) { group in
+                ForEach(hosts.library.sortedGroups) { group in
                     Label {
                         Text(verbatim: group.name)
                     } icon: {
                         Image(systemName: "folder")
                     }
+                    .badge(hosts.library.count(for: .group(group.id)))
                     .tag(HostFilter.group(group.id))
                     .contextMenu {
-                        Button("Delete Group", role: .destructive) { hosts.deleteGroup(id: group.id) }
+                        Button("Rename…") {
+                            groupNameDraft = group.name
+                            renamingGroup = group
+                            showingRenameGroup = true
+                        }
+                        Button("Delete Group…", role: .destructive) { groupPendingDeletion = group }
                     }
                 }
-                Label("Ungrouped", systemImage: "tray").tag(HostFilter.ungrouped)
+                Label("Ungrouped", systemImage: "tray")
+                    .badge(hosts.library.count(for: .ungrouped))
+                    .tag(HostFilter.ungrouped)
+            }
+            let tags = hosts.library.allTags
+            if !tags.isEmpty {
+                Section("Tags") {
+                    ForEach(tags) { tag in
+                        Label {
+                            Text(verbatim: tag.tag)
+                        } icon: {
+                            Image(systemName: "tag")
+                        }
+                        .badge(tag.count)
+                        .tag(HostFilter.tag(tag.tag))
+                    }
+                }
             }
         }
         .safeAreaInset(edge: .bottom) {
             Button {
+                groupNameDraft = ""
                 showingNewGroup = true
             } label: {
                 Label("New Group", systemImage: "folder.badge.plus")
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.bordered)
+            .controlSize(.small)
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(10)
+            .background(.bar)
         }
     }
 
     // MARK: Host list
 
-    private var filteredHosts: [SSHHost] {
-        let matched = hosts.library.hosts(matching: query)
-        let list: [SSHHost]
-        switch filter ?? .all {
-        case .all: list = matched
-        case .favorites: list = matched.filter(\.isFavorite)
-        case .group(let id): list = matched.filter { $0.groupID == id }
-        case .ungrouped: list = matched.filter { $0.groupID == nil }
-        }
-        return list.sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
-    }
-
     @ViewBuilder
     private var hostList: some View {
-        let list = filteredHosts
+        let list = hosts.hosts(filter: filter ?? .all, query: query)
         if list.isEmpty {
             ContentUnavailableView {
                 Label(query.isEmpty ? LocalizedStringKey("No hosts") : "No matching hosts", systemImage: "server.rack")
@@ -140,14 +225,28 @@ struct HostManagerView: View {
                     hosts.connect(host, settings: settings)
                 }
             }
+            .onDeleteCommand {
+                if let id = selection, let host = hosts.host(id: id) { hostPendingDeletion = host }
+            }
             .safeAreaInset(edge: .bottom) {
                 if let error = hosts.lastError {
-                    Text(error)
+                    Text(verbatim: error)
                         .font(.callout)
                         .foregroundStyle(.red)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(8)
                         .background(.bar)
+                } else if let notice = hosts.lastNotice {
+                    Label {
+                        Text(verbatim: notice)
+                    } icon: {
+                        Image(systemName: "info.circle")
+                    }
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(8)
+                    .background(.bar)
                 }
             }
         }
@@ -156,8 +255,25 @@ struct HostManagerView: View {
     @ViewBuilder
     private func hostMenu(for host: SSHHost) -> some View {
         Button("Connect") { hosts.connect(host, settings: settings) }
+        Divider()
         Button("Edit…") { editingHost = host }
+        Button("Duplicate") {
+            if let copy = hosts.duplicate(host) { selection = copy.id }
+        }
         Button(host.isFavorite ? LocalizedStringKey("Remove from Favorites") : "Add to Favorites") { hosts.toggleFavorite(host) }
+        Menu("Move to Group") {
+            Button("Ungrouped") { hosts.move(host, toGroup: nil) }
+                .disabled(host.groupID == nil)
+            if !hosts.library.groups.isEmpty { Divider() }
+            ForEach(hosts.library.sortedGroups) { group in
+                Button {
+                    hosts.move(host, toGroup: group.id)
+                } label: {
+                    Text(verbatim: group.name)
+                }
+                .disabled(host.groupID == group.id)
+            }
+        }
         Button("Copy SSH Command") {
             let builder = SSHCommandBuilder(sshPath: settings.sshPath)
             if let line = try? builder.commandLine(for: host) {
@@ -166,6 +282,6 @@ struct HostManagerView: View {
             }
         }
         Divider()
-        Button("Delete", role: .destructive) { hosts.delete(hostID: host.id) }
+        Button("Delete…", role: .destructive) { hostPendingDeletion = host }
     }
 }

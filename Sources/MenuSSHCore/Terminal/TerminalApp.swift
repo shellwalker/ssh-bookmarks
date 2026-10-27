@@ -37,10 +37,32 @@ public enum TerminalLaunchPlan: Equatable, Sendable {
     case process(executable: String, arguments: [String])
 }
 
+/// 某个终端实际用哪条启动路径。只有 Ghostty 按版本分叉。
+public enum TerminalLaunchMechanism: Equatable, Sendable {
+    /// Terminal、iTerm2（各公开版本同一套字典），以及 Ghostty ≥ 1.3。
+    case appleScript
+    /// Ghostty < 1.3，或版本未知：`open -na Ghostty --args -e`，不经过 AppleScript。
+    case legacyGhosttyProcess
+}
+
 /// 纯函数：根据终端类型生成启动计划，便于单元测试（不依赖 AppKit）。
 public enum TerminalLaunchPlanner {
     /// Ghostty 从 1.3.0 开始提供 AppleScript 字典。
     public static let ghosttyAppleScriptMinimumVersion = "1.3.0"
+
+    /// Terminal 与 iTerm2 不按版本分叉：iTerm2 的 `create window/tab with default profile` 覆盖目前的公开版本。
+    /// 只有 Ghostty 在 1.3.0 前后换过启动方式。`version` 对 Terminal / iTerm2 会被忽略。
+    public static func mechanism(for terminal: TerminalApp, version: String?) -> TerminalLaunchMechanism {
+        switch terminal {
+        case .terminal, .iTerm2:
+            return .appleScript
+        case .ghostty:
+            if let version, compareVersions(version, ghosttyAppleScriptMinimumVersion) != .orderedAscending {
+                return .appleScript
+            }
+            return .legacyGhosttyProcess
+        }
+    }
 
     /// - Parameters:
     ///   - argv: SSHCommandBuilder 生成的 argv（已校验）。
@@ -105,7 +127,7 @@ public enum TerminalLaunchPlanner {
                 """)
 
         case .ghostty:
-            if let v = ghosttyVersion, compareVersions(v, ghosttyAppleScriptMinimumVersion) != .orderedAscending {
+            if mechanism(for: .ghostty, version: ghosttyVersion) == .appleScript {
                 let create: String
                 switch mode {
                 case .newTab:

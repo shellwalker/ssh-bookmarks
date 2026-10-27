@@ -1,4 +1,5 @@
-import Foundation
+import AppKit
+import Combine
 import MenuSSHCore
 
 /// 应用设置，持久化到 UserDefaults。密码等敏感信息不在这里。
@@ -34,10 +35,12 @@ final class SettingsStore: ObservableObject {
             } else {
                 defaults.removeObject(forKey: "AppleLanguages")
             }
-            languageChangePending = true
+            languageChangePending = language != launchLanguage
         }
     }
 
+    /// 本次启动时生效的语言；改回去就不再提示重启。
+    private let launchLanguage: AppLanguage
     @Published private(set) var languageChangePending = false
 
     @Published var dockIconMode: DockIconMode {
@@ -63,14 +66,33 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(closePanelAfterConnect, forKey: Keys.closePanelAfterConnect) }
     }
 
+    /// 下次设置窗口出现时切到这一页（关于 / 从菜单打开）。用完即清。
+    @Published var pendingSettingsPane: SettingsPaneID?
+
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
         appearance = AppearanceMode(rawValue: defaults.string(forKey: Keys.appearance) ?? "") ?? .system
-        language = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .system
+        let storedLanguage = AppLanguage(rawValue: defaults.string(forKey: Keys.language) ?? "") ?? .system
+        language = storedLanguage
+        launchLanguage = storedLanguage
         dockIconMode = DockIconMode(rawValue: defaults.string(forKey: Keys.dockIconMode) ?? "") ?? .followWindow
         terminal = TerminalApp(rawValue: defaults.string(forKey: Keys.terminal) ?? "") ?? .terminal
         openMode = TerminalOpenMode(rawValue: defaults.string(forKey: Keys.openMode) ?? "") ?? .newWindow
         sshPath = defaults.string(forKey: Keys.sshPath) ?? "/usr/bin/ssh"
         closePanelAfterConnect = defaults.object(forKey: Keys.closePanelAfterConnect) as? Bool ?? true
+    }
+
+    /// 修改语言后“立即重启”：1 秒后由 /bin/sh 重新打开本应用，然后退出。
+    /// 应用路径作为 $0 传入，不拼接进脚本，避免路径中的特殊字符被 shell 解释。
+    func relaunch() {
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: "/bin/sh")
+        process.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
+        do {
+            try process.run()
+            NSApp.terminate(nil)
+        } catch {
+            NSLog("MenuSSH relaunch failed: \(error.localizedDescription)")
+        }
     }
 }
