@@ -334,7 +334,7 @@ final class SSHIntegrationTests: XCTestCase {
         return "\n[\(name)] \(text.suffix(500))"
     }
 
-    private func run(_ argv: [String], env: [String: String], timeout: TimeInterval) throws -> (Int32, String) {
+    private func run(_ argv: [String], env: [String: String], timeout: TimeInterval = 20) throws -> (Int32, String) {
         let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         let outputURL = directory.appendingPathComponent("out.txt")
