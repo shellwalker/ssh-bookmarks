@@ -154,7 +154,7 @@ final class MenuSSHUITests: XCTestCase {
             XCTAssertTrue(app.dialogs.staticTexts["Discard unsaved changes?"].firstMatch.waitForExistence(timeout: 3))
         }
         shot(marked(app, id.editorCancel), "confirm-discard-en-light", screen: "editor", appearance: "light", language: "en")
-        clickDiscard(app)
+        clickAlertButton(app, "Discard Changes", near: "Discard unsaved changes?")
 
         let hosts = marked(app, id.hosts)
         XCTAssertTrue(hosts.waitForExistence(timeout: 8))
@@ -169,9 +169,7 @@ final class MenuSSHUITests: XCTestCase {
         chooseMenu(app, identifier: id.hostDelete, titles: ["Delete…"])
         XCTAssertTrue(app.staticTexts["Delete this host?"].waitForExistence(timeout: 5))
         shot(row, "confirm-delete-en-light", screen: "hosts", appearance: "light", language: "en")
-        let cancelDelete = app.buttons["Cancel"].firstMatch
-        XCTAssertTrue(cancelDelete.waitForExistence(timeout: 3))
-        cancelDelete.click()
+        clickAlertButton(app, "Cancel", near: "Delete this host?")
         XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 3))
 
         row.rightClick()
@@ -180,7 +178,7 @@ final class MenuSSHUITests: XCTestCase {
         replace(marked(app, id.editorLabel), "changed")
         marked(app, id.editorCancel).click()
         XCTAssertTrue(app.staticTexts["Discard unsaved changes?"].waitForExistence(timeout: 5))
-        clickDiscard(app)
+        clickAlertButton(app, "Discard Changes", near: "Discard unsaved changes?")
         XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 5))
         app.terminate()
     }
@@ -275,11 +273,51 @@ final class MenuSSHUITests: XCTestCase {
         return app.dialogs.firstMatch
     }
 
-    /// 确认框的按钮经常在辅助功能树里出现两份，下标查询会因为不止一个匹配而失败。
-    private func clickDiscard(_ app: XCUIApplication) {
-        let button = app.buttons["Discard Changes"].firstMatch
-        XCTAssertTrue(button.waitForExistence(timeout: 4))
-        button.click()
+    /// `app.buttons` 的第一颗经常是 Touch Bar 镜像，直接 click 会失败。只点含有提示文案的 sheet/dialog/window。
+    private func clickAlertButton(_ app: XCUIApplication, _ title: String, near text: String) {
+        let deadline = Date().addingTimeInterval(6)
+        while Date() < deadline {
+            if let button = alertButton(app, title: title, near: text) {
+                button.click()
+                return
+            }
+            Thread.sleep(forTimeInterval: 0.2)
+        }
+        XCTFail("on-screen alert button not found: \(title)")
+    }
+
+    private func alertButton(_ app: XCUIApplication, title: String, near text: String) -> XCUIElement? {
+        for container in alertContainers(app, containing: text) {
+            let matches = container.descendants(matching: .button).matching(NSPredicate(format: "label == %@", title))
+            for index in 0..<matches.count {
+                let button = matches.element(boundBy: index)
+                guard button.exists, button.isHittable, !isTouchBarElement(button, app: app) else { continue }
+                return button
+            }
+        }
+        return nil
+    }
+
+    private func alertContainers(_ app: XCUIApplication, containing text: String) -> [XCUIElement] {
+        var found: [XCUIElement] = []
+        for query in [app.sheets, app.dialogs, app.windows] {
+            for element in query.allElementsBoundByIndex where element.exists {
+                let message = element.staticTexts.matching(NSPredicate(format: "label == %@", text)).firstMatch
+                if message.exists { found.append(element) }
+            }
+        }
+        return found
+    }
+
+    private func isTouchBarElement(_ element: XCUIElement, app: XCUIApplication) -> Bool {
+        let note = element.debugDescription.lowercased()
+        if note.contains("touch bar") || note.contains("touchbar") { return true }
+        let frame = element.frame
+        for bar in app.touchBars.allElementsBoundByIndex where bar.exists {
+            let barFrame = bar.frame
+            if barFrame.width > 1, barFrame.intersects(frame) { return true }
+        }
+        return false
     }
 
     private func click(_ element: XCUIElement, app: XCUIApplication) {
