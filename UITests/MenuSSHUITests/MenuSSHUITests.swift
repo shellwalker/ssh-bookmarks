@@ -207,18 +207,11 @@ final class MenuSSHUITests: XCTestCase {
         return bottom > 0 ? bottom : app.frame.maxY
     }
 
-    /// 在表单可见区域内向上拖。没有有效 sheet 时不制造坐标，避免 INFINITY。
+    /// 用系统的 swipe，不用 app.coordinate。macOS 上应用坐标可能是 INFINITY。
     private func nudgeSheet(_ app: XCUIApplication) -> Bool {
         let sheet = app.sheets.firstMatch
-        let frame = sheet.frame
-        guard sheet.exists, frame.width > 1, frame.height > 1, frame.midX.isFinite, frame.minY.isFinite else { return false }
-        let bottom = min(frame.maxY, visibleBottom(app))
-        let top = max(frame.minY, 80)
-        guard bottom - top > 160, bottom.isFinite, top.isFinite else { return false }
-        let origin = app.coordinate(withNormalizedOffset: CGVector(dx: 0, dy: 0))
-        let start = origin.withOffset(CGVector(dx: frame.midX, dy: bottom - 40))
-        let end = origin.withOffset(CGVector(dx: frame.midX, dy: top + 40))
-        start.press(forDuration: 0.05, thenDragTo: end)
+        guard sheet.exists, sheet.frame.width > 1, sheet.frame.height > 1 else { return false }
+        sheet.swipeUp()
         return true
     }
 
@@ -292,7 +285,7 @@ final class MenuSSHUITests: XCTestCase {
         attachment.name = name
         attachment.lifetime = .keepAlways
         add(attachment)
-        guard let dir = screenshotDirectory() else { return }
+        let dir = screenshotDirectory()
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let file = dir.appendingPathComponent("\(name).png")
         try? screenshot.pngRepresentation.write(to: file)
@@ -308,9 +301,12 @@ final class MenuSSHUITests: XCTestCase {
         }
     }
 
-    private func screenshotDirectory() -> URL? {
-        guard let path = ProcessInfo.processInfo.environment["MENUSH_SCREENSHOT_DIR"], !path.isEmpty else { return nil }
-        return URL(fileURLWithPath: path, isDirectory: true)
+    /// scheme 里的 `$(SRCROOT)` 经常原样传进来。那种相对路径丢掉，改写到固定临时目录，脚本再拷回 build/。
+    private func screenshotDirectory() -> URL {
+        if let path = ProcessInfo.processInfo.environment["MENUSH_SCREENSHOT_DIR"], path.hasPrefix("/") {
+            return URL(fileURLWithPath: path, isDirectory: true)
+        }
+        return URL(fileURLWithPath: "/tmp/menush-ui-screenshots", isDirectory: true)
     }
 
     private func groups(in dataDir: URL) throws -> [String: String] {

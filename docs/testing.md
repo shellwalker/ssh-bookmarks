@@ -27,6 +27,7 @@ CI 在 `macos-14` arm64 runner 上分三个 job 并行跑。任一失败都会�
 - 使用单独的 UserDefaults，并强制关闭同步、面板在连接后不关、Dock 图标保持显示。
 - `MENUSH_APPEARANCE=light|dark` 固定外观。语言用启动参数 `-AppleLanguages`。
 - `MENUSH_FAKE_TERMINAL_LOG` 把将要执行的 argv 和启动命令写成一行 JSON，不跑 AppleScript、不打开 Terminal。
+- 站点窗口和设置窗口会钉在屏幕可见区域顶部，高度至少 900（不超过屏幕）。编辑表单才不会伸出窗口。面板窗口不动。
 
 没有这些变量时，正式行为不变。
 
@@ -72,7 +73,7 @@ Scripts/ci_sshd_fixture.sh stop
 Scripts/ci_ui_tests.sh
 ```
 
-截图在 `build/ui-screenshots/`，结果包在 `build/ui-results.xcresult`。
+截图在 `build/ui-screenshots/`（若测试进程没拿到绝对路径，会先写到 `/tmp/menush-ui-screenshots`，脚本结束时拷回来）。结果包在 `build/ui-results.xcresult`。
 
 只看测试模式的界面、不跑 XCUITest：
 

@@ -31,11 +31,53 @@ echo "==> build app"
 ARCH="${ARCH:-arm64}" Scripts/build_app.sh
 
 rm -rf "$ROOT/build/ui-screenshots" "$ROOT/build/ui-results.xcresult" "$ROOT/build/ui-derived" \
-  "$ROOT/MenuSSHUI.xcodeproj"
+  "$ROOT/MenuSSHUI.xcodeproj" /tmp/menush-ui-screenshots
 mkdir -p "$ROOT/build/ui-screenshots"
 
 echo "==> generate Xcode project"
 xcodegen generate --spec "$ROOT/project.yml" --project "$ROOT"
+
+SCHEME="$(find "$ROOT/MenuSSHUI.xcodeproj" -name 'MenuSSHUI.xcscheme' | head -n 1)"
+if [[ -z "$SCHEME" ]]; then
+  echo "missing MenuSSHUI.xcscheme" >&2
+  exit 1
+fi
+python3 - "$SCHEME" "$ROOT/build/ui-screenshots" <<'PY'
+import re
+import sys
+from pathlib import Path
+
+path, value = sys.argv[1], sys.argv[2]
+text = Path(path).read_text()
+text, flag_count = re.subn(
+    r'(<TestAction\b[^>]*\bshouldUseLaunchSchemeArgsEnv\s*=\s*")[^"]*"',
+    r'\1NO"',
+    text,
+    count=1,
+    flags=re.S,
+)
+if flag_count != 1:
+    raise SystemExit("scheme has no TestAction shouldUseLaunchSchemeArgsEnv")
+
+value_pattern = re.compile(
+    r'(<EnvironmentVariable\b[^>]*\bkey\s*=\s*"MENUSH_SCREENSHOT_DIR"[^>]*\bvalue\s*=\s*")[^"]*"',
+    re.S,
+)
+text, value_count = value_pattern.subn(rf'\1{value}"', text, count=1)
+if value_count != 1:
+    block = (
+        "      <EnvironmentVariables>\n"
+        f'         <EnvironmentVariable key="MENUSH_SCREENSHOT_DIR" value="{value}" isEnabled="YES"/>\n'
+        "      </EnvironmentVariables>\n"
+    )
+    if "<Testables>" not in text:
+        raise SystemExit("scheme has no Testables")
+    text = text.replace("<Testables>", block + "      <Testables>", 1)
+if "MENUSH_SCREENSHOT_DIR" not in text or value not in text:
+    raise SystemExit("could not set MENUSH_SCREENSHOT_DIR in the scheme")
+Path(path).write_text(text)
+print("screenshot directory:", value)
+PY
 
 echo "==> XCUITest"
 export MENUSH_SCREENSHOT_DIR="$ROOT/build/ui-screenshots"
@@ -49,4 +91,7 @@ xcodebuild test \
   CODE_SIGNING_ALLOWED=NO
 status=$?
 set -e
+if [[ -d /tmp/menush-ui-screenshots ]]; then
+  cp -R /tmp/menush-ui-screenshots/. "$ROOT/build/ui-screenshots/"
+fi
 exit "$status"

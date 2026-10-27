@@ -55,8 +55,6 @@ schemes:
         MenuSSHUITests: [test]
     test:
       targets:
-        - name: MenuSSHUITests
-          environmentVariables:
-            - variable: MENUSH_SCREENSHOT_DIR
-              value: $(SRCROOT)/build/ui-screenshots
-              isEnabled: true
+        - MenuSSHUITests
+      environmentVariables:
+        MENUSH_SCREENSHOT_DIR: $(SRCROOT)/build/ui-screenshots
