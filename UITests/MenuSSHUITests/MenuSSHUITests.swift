@@ -158,13 +158,21 @@ final class MenuSSHUITests: XCTestCase {
 
         let hosts = marked(app, id.hosts)
         XCTAssertTrue(hosts.waitForExistence(timeout: 8))
-        marked(app, id.hostsImport).click()
-        let imported = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Imported 1 hosts")).firstMatch
-        XCTAssertTrue(imported.waitForExistence(timeout: 8))
-        let alias = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "HostName is saved in notes")).firstMatch
-        XCTAssertTrue(alias.exists || imported.label.contains("HostName is saved in notes"))
+        let importButton = hosts.descendants(matching: .button).matching(identifier: id.hostsImport).firstMatch
+        if importButton.waitForExistence(timeout: 5) {
+            importButton.click()
+        } else {
+            let toolbar = app.buttons.matching(identifier: id.hostsImport).firstMatch
+            XCTAssertTrue(toolbar.waitForExistence(timeout: 3))
+            toolbar.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).click()
+        }
         let row = marked(hosts, "host.ci-alias")
         XCTAssertTrue(row.waitForExistence(timeout: 8))
+        let notice = marked(app, id.hostsNotice)
+        XCTAssertTrue(notice.waitForExistence(timeout: 5))
+        let noticeText = notice.label + " " + ((notice.value as? String) ?? "")
+        XCTAssertTrue(noticeText.contains("Imported 1 hosts"), noticeText)
+        XCTAssertTrue(noticeText.contains("HostName is saved in notes"), noticeText)
         row.rightClick()
         chooseMenu(app, identifier: id.hostDelete, titles: ["Delete…"])
         XCTAssertTrue(app.staticTexts["Delete this host?"].waitForExistence(timeout: 5))
@@ -590,6 +598,7 @@ private enum id {
     static let panelNewHost = "panel.newHost"
     static let hostsNew = "hosts.new"
     static let hostsImport = "hosts.import"
+    static let hostsNotice = "hosts.notice"
     static let hostsSettings = "hosts.settings"
     static let hostsNewGroup = "hosts.newGroup"
     static let groupName = "group.name"

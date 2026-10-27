@@ -291,6 +291,7 @@ struct HostManagerView: View {
                     .foregroundStyle(.orange)
                     .multilineTextAlignment(.center)
                     .padding(8)
+                    .accessibilityIdentifier(UITestID.hostsNotice)
             }
         } else {
             List(list, selection: $selection) { host in
@@ -328,6 +329,8 @@ struct HostManagerView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .padding(8)
                     .background(.bar)
+                    .accessibilityIdentifier(UITestID.hostsNotice)
+                    .accessibilityLabel(Text(verbatim: notice))
                 }
             }
         }

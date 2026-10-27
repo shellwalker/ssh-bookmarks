@@ -97,6 +97,7 @@ enum UITestID {
     static let panelNewHost = "panel.newHost"
     static let hostsNew = "hosts.new"
     static let hostsImport = "hosts.import"
+    static let hostsNotice = "hosts.notice"
     static let hostsUndo = "hosts.undo"
     static let hostsSettings = "hosts.settings"
     static let hostsNewGroup = "hosts.newGroup"
