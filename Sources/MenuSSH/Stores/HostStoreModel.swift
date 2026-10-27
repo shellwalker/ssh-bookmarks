@@ -11,9 +11,13 @@ final class HostStoreModel: ObservableObject {
     @Published var lastError: String?
     /// 回退到别的终端时的说明。不是错误，连接已经发出。
     @Published var lastNotice: String?
+    /// 菜单栏空状态的「新建站点」：站点窗口出现后打开编辑器。
+    @Published var presentNewHost = false
+    @Published private(set) var canUndo = false
 
     let fileStore: HostFileStore
     private let keychain = KeychainService()
+    private var undoStack: [HostLibrary] = []
 
     init(fileStore: HostFileStore? = nil) {
         if let fileStore {
@@ -51,18 +55,21 @@ final class HostStoreModel: ObservableObject {
             return 0
         }
         let conflicts = applySync()
-        if conflicts > 0 {
-            lastNotice = L10n.format("Sync resolved %lld conflicting items by keeping one copy.", Int64(conflicts))
-        }
+        if conflicts > 0 { lastNotice = syncConflictNotice(conflicts) }
         return conflicts
     }
 
     /// 设置里打开同步，或启动时拉取。不把“另一边较新”当成冲突。
     func syncNow() {
         let conflicts = applySync()
-        if conflicts > 0 {
-            lastNotice = L10n.format("Sync resolved %lld conflicting items by keeping one copy.", Int64(conflicts))
-        }
+        if conflicts > 0 { lastNotice = syncConflictNotice(conflicts) }
+    }
+
+    private func syncConflictNotice(_ conflicts: Int) -> String {
+        L10n.format(
+            "Sync kept the greater device id for %lld tied items. When updatedAt differs, the newer side is kept.",
+            Int64(conflicts)
+        )
     }
 
     private func applySync() -> Int {
@@ -126,6 +133,7 @@ final class HostStoreModel: ObservableObject {
     }
 
     func delete(hostID: UUID) {
+        registerUndoPoint()
         library.removeHost(id: hostID, deviceId: deviceId)
         keychain.deleteAll(hostID: hostID)
         persist()
@@ -193,8 +201,27 @@ final class HostStoreModel: ObservableObject {
     }
 
     func deleteGroup(id: UUID) {
+        registerUndoPoint()
         library.removeGroup(id: id, deviceId: deviceId)
         persist()
+    }
+
+    func undoLastChange() {
+        guard let previous = undoStack.popLast() else { return }
+        canUndo = !undoStack.isEmpty
+        library = previous
+        let conflicts = persist()
+        if conflicts == 0 {
+            lastNotice = String(
+                localized: "Undid the last change. A deleted password stays removed from the Keychain."
+            )
+        }
+    }
+
+    private func registerUndoPoint() {
+        undoStack.append(library)
+        if undoStack.count > 20 { undoStack.removeFirst() }
+        canUndo = !undoStack.isEmpty
     }
 
     @discardableResult
@@ -204,12 +231,13 @@ final class HostStoreModel: ObservableObject {
         return true
     }
 
-    /// 从 ~/.ssh/config 导入（跳过已存在的同名 hostname）。展开 Include，并回填 User / Port / IdentityFile / ProxyJump。
+    /// 从 ~/.ssh/config 导入。同名 hostname 跳过，不覆盖。HostName 只进备注。
     @discardableResult
-    func importSSHConfig(from url: URL = URL(fileURLWithPath: NSHomeDirectory()).appendingPathComponent(".ssh/config")) -> Int {
+    func importSSHConfig(from url: URL? = nil) -> SSHConfigImportPlan? {
+        let url = url ?? UITestLaunch.sshDirectory.appendingPathComponent("config")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             lastError = L10n.format("Cannot read %@", url.path)
-            return 0
+            return nil
         }
         let home = NSHomeDirectory()
         let fm = FileManager.default
@@ -224,15 +252,25 @@ final class HostStoreModel: ObservableObject {
                 (try? fm.contentsOfDirectory(atPath: directory)) ?? []
             }
         )
-        let existing = Set(library.hosts.map { $0.hostname.lowercased() })
-        let newHosts = SSHConfigParser.makeHosts(from: entries)
-            .filter { !existing.contains($0.hostname.lowercased()) }
-        for var h in newHosts {
-            h.updatedByDeviceId = deviceId
-            library.upsert(h)
+        let plan = SSHConfigParser.planImport(entries: entries, existingHostnames: Set(library.hosts.map(\.hostname)))
+        for var host in plan.hosts {
+            host.updatedByDeviceId = deviceId
+            library.upsert(host)
         }
-        persist()
-        return newHosts.count
+        lastError = nil
+        let conflicts = persist()
+        if conflicts == 0 { lastNotice = importNotice(plan) }
+        return plan
+    }
+
+    func importNotice(_ plan: SSHConfigImportPlan) -> String {
+        let counts = L10n.format(
+            "Imported %lld hosts. Skipped %lld duplicates.",
+            Int64(plan.hosts.count),
+            Int64(plan.skippedDuplicates)
+        )
+        let alias = String(localized: "Connections use the alias. HostName is saved in notes.")
+        return counts + "\n" + alias
     }
 
     // MARK: - Connect

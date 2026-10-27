@@ -1,6 +1,16 @@
 import Foundation
 
 /// ~/.ssh/config 中的一个 Host 条目（只保留导入需要的字段）。
+public struct SSHConfigImportPlan: Equatable, Sendable {
+    public var hosts: [SSHHost]
+    public var skippedDuplicates: Int
+
+    public init(hosts: [SSHHost], skippedDuplicates: Int) {
+        self.hosts = hosts
+        self.skippedDuplicates = skippedDuplicates
+    }
+}
+
 public struct SSHConfigEntry: Equatable, Sendable {
     public var alias: String
     public var hostName: String?
@@ -53,6 +63,25 @@ public enum SSHConfigParser {
         )
         state.flush()
         return state.entries
+    }
+
+    /// 已有 hostname（不区分大小写）整条跳过，不覆盖。同一文件里的重复别名也只保留第一条。
+    public static func planImport(
+        entries: [SSHConfigEntry], existingHostnames: Set<String>, groupID: UUID? = nil
+    ) -> SSHConfigImportPlan {
+        var seen = Set(existingHostnames.map { $0.lowercased() })
+        var hosts: [SSHHost] = []
+        var skipped = 0
+        for host in makeHosts(from: entries, groupID: groupID) {
+            let key = host.hostname.lowercased()
+            if seen.contains(key) {
+                skipped += 1
+            } else {
+                seen.insert(key)
+                hosts.append(host)
+            }
+        }
+        return SSHConfigImportPlan(hosts: hosts, skippedDuplicates: skipped)
     }
 
     /// hostname 仍用别名，这样未导入的 config 选项继续由 ssh 自己应用。

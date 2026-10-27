@@ -120,6 +120,20 @@ public extension HostLibrary {
 
     public static let recentSectionLimit = 8
 
+    /// 面板分区标题。顶层分组只有自己的名字；子分组是「父 / 子」。
+    public func groupPath(id: UUID) -> String {
+        var names: [String] = []
+        var current: UUID? = id
+        var seen = Set<UUID>()
+        var steps = 0
+        while let cid = current, steps < 32, seen.insert(cid).inserted, let group = groups.first(where: { $0.id == cid }) {
+            names.append(group.name)
+            current = group.parentID
+            steps += 1
+        }
+        return names.reversed().joined(separator: " / ")
+    }
+
     /// 最近连接（菜单栏面板顶部）。最多 8 条。
     func recentHosts(limit: Int = HostLibrary.recentSectionLimit) -> [SSHHost] {
         hosts

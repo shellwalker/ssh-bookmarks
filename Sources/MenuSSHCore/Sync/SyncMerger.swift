@@ -3,10 +3,52 @@ import Foundation
 public struct SyncMergeOutcome: Equatable, Sendable {
     public var document: SyncDocument
     public var conflictCount: Int
+    /// 时间戳不同、较新的一边胜出。不算冲突。
+    public var newerUpdatedAtKept: Int
+    /// 时间戳相同才计冲突，并按 deviceId 字典序取舍。与 `conflictCount` 一致。
+    public var deviceIdOrderKept: Int
 
-    public init(document: SyncDocument, conflictCount: Int) {
+    public init(
+        document: SyncDocument, conflictCount: Int, newerUpdatedAtKept: Int = 0, deviceIdOrderKept: Int = 0
+    ) {
         self.document = document
         self.conflictCount = conflictCount
+        self.newerUpdatedAtKept = newerUpdatedAtKept
+        self.deviceIdOrderKept = deviceIdOrderKept
+    }
+}
+
+/// 两条记录谁留下。`left` 是调用方传入的第一份（通常是本机）。
+public struct SyncKeepDecision: Equatable, Sendable {
+    public enum Side: String, Equatable, Sendable {
+        case left
+        case right
+    }
+
+    public enum Reason: String, Equatable, Sendable {
+        case newerUpdatedAt
+        case deviceIdOrder
+    }
+
+    public var kept: Side
+    public var reason: Reason
+    /// 只有时间戳相同且内容不同才算冲突。较新的 `updatedAt` 静默胜出。
+    public var countsAsConflict: Bool
+
+    public init(kept: Side, reason: Reason, countsAsConflict: Bool) {
+        self.kept = kept
+        self.reason = reason
+        self.countsAsConflict = countsAsConflict
+    }
+
+    public var keptSideName: String { kept.rawValue }
+
+    /// 稳定的英文规则名，供测试和提示文案对齐。
+    public var ruleName: String {
+        switch reason {
+        case .newerUpdatedAt: return "newer updatedAt"
+        case .deviceIdOrder: return "deviceId order"
+        }
     }
 }
 
@@ -28,10 +70,33 @@ public enum SyncMerger {
         return (tombstone.deviceId ?? "") >= (deviceId ?? "")
     }
 
+    /// 冲突提示用的英文句子：平局留 deviceId 较大的一边；时间不同则留较新的 updatedAt。
+    public static func conflictNotice(tiedItems: Int) -> String {
+        "Kept the greater device id for \(tiedItems) tied items. When updatedAt differs, the newer side is kept."
+    }
+
+    public static func decide(
+        leftUpdatedAt: Date,
+        leftDeviceId: String?,
+        rightUpdatedAt: Date,
+        rightDeviceId: String?,
+        sameContent: Bool
+    ) -> SyncKeepDecision {
+        if leftUpdatedAt != rightUpdatedAt {
+            let leftWins = leftUpdatedAt > rightUpdatedAt
+            return SyncKeepDecision(kept: leftWins ? .left : .right, reason: .newerUpdatedAt, countsAsConflict: false)
+        }
+        let left = leftDeviceId ?? ""
+        let right = rightDeviceId ?? ""
+        let leftWins = left >= right
+        return SyncKeepDecision(kept: leftWins ? .left : .right, reason: .deviceIdOrder, countsAsConflict: !sameContent)
+    }
+
     public static func merge(local: SyncDocument, remote: SyncDocument, now: Date, writingDeviceId: String) -> SyncMergeOutcome {
         var conflicts = Set<String>()
-        var hosts = mergeHosts(local.hosts, remote.hosts, conflicts: &conflicts)
-        var groups = mergeGroups(local.groups, remote.groups, conflicts: &conflicts)
+        var newerWins = 0
+        var hosts = mergeHosts(local.hosts, remote.hosts, conflicts: &conflicts, newerWins: &newerWins)
+        var groups = mergeGroups(local.groups, remote.groups, conflicts: &conflicts, newerWins: &newerWins)
         var tombstones = mergeTombstones(
             prune(local.tombstones, now: now),
             prune(remote.tombstones, now: now)
@@ -48,7 +113,12 @@ public enum SyncMerger {
                 ($0.kind.rawValue, $0.id.uuidString) < ($1.kind.rawValue, $1.id.uuidString)
             }
         )
-        return SyncMergeOutcome(document: document, conflictCount: conflicts.count)
+        return SyncMergeOutcome(
+            document: document,
+            conflictCount: conflicts.count,
+            newerUpdatedAtKept: newerWins,
+            deviceIdOrderKept: conflicts.count
+        )
     }
 
     /// 把冲突副本依次并进主文件。副本之间、以及和主文件时间戳打平时才计入冲突。
@@ -60,13 +130,16 @@ public enum SyncMerger {
     ) -> SyncMergeOutcome {
         var current = primary
         var conflicts = 0
+        var newerWins = 0
         for copy in copies {
             let step = merge(local: current, remote: copy, now: now, writingDeviceId: writingDeviceId)
             current = step.document
             conflicts += step.conflictCount
+            newerWins += step.newerUpdatedAtKept
         }
         current.deviceId = writingDeviceId
-        return SyncMergeOutcome(document: current, conflictCount: conflicts)
+        return SyncMergeOutcome(
+            document: current, conflictCount: conflicts, newerUpdatedAtKept: newerWins, deviceIdOrderKept: conflicts)
     }
 
     private enum Side {
@@ -74,14 +147,14 @@ public enum SyncMerger {
     }
 
     private static func choose(leftDate: Date, leftDevice: String?, rightDate: Date, rightDevice: String?) -> Side {
-        if leftDate != rightDate { return leftDate > rightDate ? .left : .right }
-        let left = leftDevice ?? ""
-        let right = rightDevice ?? ""
-        if left != right { return left > right ? .left : .right }
-        return .left
+        let decision = decide(
+            leftUpdatedAt: leftDate, leftDeviceId: leftDevice, rightUpdatedAt: rightDate, rightDeviceId: rightDevice, sameContent: true)
+        return decision.kept == .left ? .left : .right
     }
 
-    private static func mergeHosts(_ local: [SSHHost], _ remote: [SSHHost], conflicts: inout Set<String>) -> [SSHHost] {
+    private static func mergeHosts(
+        _ local: [SSHHost], _ remote: [SSHHost], conflicts: inout Set<String>, newerWins: inout Int
+    ) -> [SSHHost] {
         let remoteByID = indexed(remote)
         var seen = Set<UUID>()
         var result: [SSHHost] = []
@@ -91,8 +164,9 @@ public enum SyncMerger {
                 result.append(host)
                 continue
             }
-            let (winner, tied) = combine(host, other)
-            if tied { conflicts.insert("host-\(host.id.uuidString)") }
+            let (winner, decision) = combine(host, other)
+            if decision.countsAsConflict { conflicts.insert("host-\(host.id.uuidString)") }
+            if decision.reason == .newerUpdatedAt { newerWins += 1 }
             result.append(winner)
         }
         for host in remoteByID.values where !seen.contains(host.id) {
@@ -105,7 +179,7 @@ public enum SyncMerger {
         var byID: [UUID: SSHHost] = [:]
         for host in hosts {
             if let existing = byID[host.id] {
-                byID[host.id] = combine(existing, host).0
+                byID[host.id] = combine(existing, host).host
             } else {
                 byID[host.id] = host
             }
@@ -113,17 +187,22 @@ public enum SyncMerger {
         return byID
     }
 
-    private static func combine(_ local: SSHHost, _ remote: SSHHost) -> (SSHHost, Bool) {
-        let side = choose(
-            leftDate: local.updatedAt, leftDevice: local.updatedByDeviceId,
-            rightDate: remote.updatedAt, rightDevice: remote.updatedByDeviceId)
-        var winner = side == .left ? local : remote
+    private static func combine(_ local: SSHHost, _ remote: SSHHost) -> (host: SSHHost, decision: SyncKeepDecision) {
+        let decision = decide(
+            leftUpdatedAt: local.updatedAt,
+            leftDeviceId: local.updatedByDeviceId,
+            rightUpdatedAt: remote.updatedAt,
+            rightDeviceId: remote.updatedByDeviceId,
+            sameContent: local.hasSameSyncContent(as: remote)
+        )
+        var winner = decision.kept == .left ? local : remote
         winner.lastConnectedAt = latest(local.lastConnectedAt, remote.lastConnectedAt)
-        let tied = local.updatedAt == remote.updatedAt && !local.hasSameSyncContent(as: remote)
-        return (winner, tied)
+        return (winner, decision)
     }
 
-    private static func mergeGroups(_ local: [HostGroup], _ remote: [HostGroup], conflicts: inout Set<String>) -> [HostGroup] {
+    private static func mergeGroups(
+        _ local: [HostGroup], _ remote: [HostGroup], conflicts: inout Set<String>, newerWins: inout Int
+    ) -> [HostGroup] {
         let remoteByID = indexed(remote)
         var seen = Set<UUID>()
         var result: [HostGroup] = []
@@ -133,13 +212,16 @@ public enum SyncMerger {
                 result.append(group)
                 continue
             }
-            let side = choose(
-                leftDate: group.updatedAt, leftDevice: group.updatedByDeviceId,
-                rightDate: other.updatedAt, rightDevice: other.updatedByDeviceId)
-            let winner = side == .left ? group : other
-            if group.updatedAt == other.updatedAt && !group.hasSameSyncContent(as: other) {
-                conflicts.insert("group-\(group.id.uuidString)")
-            }
+            let decision = decide(
+                leftUpdatedAt: group.updatedAt,
+                leftDeviceId: group.updatedByDeviceId,
+                rightUpdatedAt: other.updatedAt,
+                rightDeviceId: other.updatedByDeviceId,
+                sameContent: group.hasSameSyncContent(as: other)
+            )
+            let winner = decision.kept == .left ? group : other
+            if decision.countsAsConflict { conflicts.insert("group-\(group.id.uuidString)") }
+            if decision.reason == .newerUpdatedAt { newerWins += 1 }
             result.append(winner)
         }
         for group in remoteByID.values where !seen.contains(group.id) {

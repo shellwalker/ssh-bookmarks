@@ -28,6 +28,20 @@ public enum SSHCommandError: Error, Equatable, Sendable {
     }
 }
 
+public enum ExtraOptionRejection: Equatable, Sendable {
+    case emptyKey
+    case invalidKey(String)
+    case blockedKey(String)
+    case emptyValue
+    case controlCharacter
+}
+
+public enum ExtraOptionNormalization: Equatable, Sendable {
+    case drop
+    case accept(SSHOption)
+    case reject(ExtraOptionRejection)
+}
+
 /// 站点中可被校验的字段。
 public enum HostField: String, Sendable, CaseIterable {
     case hostname, username, port, identityFile, jumpHost, extraOptions, portForwards, startupCommand, sshPath
@@ -55,14 +69,25 @@ public struct SSHCommandBuilder: Sendable {
         return [sshPath] + (try arguments(for: host))
     }
 
-    /// 空字符串表示不追加。非空必须是单行，且不能含控制字符，避免打断 AppleScript / shell。
+    /// 空字符串表示不追加。末尾换行会去掉；中间的控制字符仍拒绝，避免打断 AppleScript / shell。
     public static func startupCommand(_ raw: String) throws -> String? {
-        let trimmed = raw.trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
+        var text = raw
+        while let last = text.last, last == "\n" || last == "\r" {
+            text.removeLast()
+        }
+        let trimmed = text.trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
         if trimmed.isEmpty { return nil }
         guard trimmed.utf8.count <= 500, !trimmed.containsControlCharacters else {
             throw SSHCommandError.invalidStartupCommand(raw)
         }
         return trimmed
+    }
+
+    /// 启动命令看起来像在携带密码。允许保存，但要警告：它会写进 hosts 文件，而不是钥匙串。
+    public static func startupCommandLooksLikeSecret(_ command: String) -> Bool {
+        let folded = command.lowercased()
+        let markers = ["password=", "passwd=", "sshpass", "--password", "secret="]
+        return markers.contains { folded.contains($0) }
     }
 
     /// ssh 之后的参数。
@@ -194,6 +219,19 @@ public struct SSHCommandBuilder: Sendable {
     static func isValidOptionKey(_ s: String) -> Bool {
         !s.isEmpty && s.unicodeScalars.allSatisfy { asciiLetters.contains($0) }
             && !blockedOptionKeys.contains(s.lowercased())
+    }
+
+    /// 编辑器里的一行 `-o`。两边都空则丢掉；否则按白名单 / 黑名单给出原因。
+    public static func normalizeExtraOption(key: String, value: String) -> ExtraOptionNormalization {
+        let key = key.trimmingCharacters(in: plainSpaces)
+        let value = value.trimmingCharacters(in: plainSpaces)
+        if key.isEmpty && value.isEmpty { return .drop }
+        if key.isEmpty { return .reject(.emptyKey) }
+        if blockedOptionKeys.contains(key.lowercased()) { return .reject(.blockedKey(key)) }
+        if !isValidOptionKey(key) { return .reject(.invalidKey(key)) }
+        if value.isEmpty { return .reject(.emptyValue) }
+        if !isValidOptionValue(value) { return .reject(.controlCharacter) }
+        return .accept(SSHOption(key: key, value: value))
     }
 
     static func isValidOptionValue(_ s: String) -> Bool {

@@ -26,7 +26,7 @@ struct MenuBarContentView: View {
 
             if sections.isEmpty {
                 emptyState
-                    .frame(height: 260)
+                    .frame(height: 300)
             } else {
                 hostList(sections)
                     .frame(height: 320)
@@ -92,7 +92,7 @@ struct MenuBarContentView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 0) {
                     ForEach(sections) { section in
-                        section.title
+                        section.title(in: hosts.library)
                             .font(.system(size: 11, weight: .semibold))
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 14)
@@ -103,7 +103,6 @@ struct MenuBarContentView: View {
                             MenuHostButton(
                                 host: host,
                                 isSelected: cursor.selectedID == entryID,
-                                onHover: { cursor.select(id: entryID) },
                                 action: { connect(host) }
                             )
                             .id(entryID)
@@ -125,7 +124,14 @@ struct MenuBarContentView: View {
             Text(query.isEmpty ? LocalizedStringKey("No hosts yet") : "No matching hosts")
                 .foregroundStyle(.secondary)
             if query.isEmpty {
-                Button("Add Host…") { open(WindowID.hosts) }
+                Button("Import ~/.ssh/config") { hosts.importSSHConfig() }
+                    .buttonStyle(.borderedProminent)
+                    .accessibilityIdentifier(UITestID.panelImport)
+                Button("New Host") {
+                    hosts.presentNewHost = true
+                    open(WindowID.hosts)
+                }
+                .accessibilityIdentifier(UITestID.panelNewHost)
             }
         }
         .frame(maxWidth: .infinity)
@@ -239,13 +245,13 @@ struct MenuBarContentView: View {
     }
 }
 
-/// 一行站点按钮：键盘选中或鼠标悬停时高亮。
+/// 一行站点按钮。悬停只改背景，不移动键盘选中项。
 @MainActor
 private struct MenuHostButton: View {
     let host: SSHHost
     let isSelected: Bool
-    let onHover: () -> Void
     let action: () -> Void
+    @State private var hovering = false
 
     var body: some View {
         Button(action: action) {
@@ -254,16 +260,20 @@ private struct MenuHostButton: View {
                 .padding(.vertical, 5)
                 .background(
                     RoundedRectangle(cornerRadius: 6)
-                        .fill(isSelected ? Color.accentColor.opacity(0.18) : Color.clear)
+                        .fill(rowFill)
                 )
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .modifier(UITestContainer(identifier: UITestID.host(host.label)))
         .padding(.horizontal, 6)
-        .onHover { inside in
-            if inside { onHover() }
-        }
+        .onHover { hovering = $0 }
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private var rowFill: Color {
+        if isSelected { return Color.accentColor.opacity(0.18) }
+        if hovering { return Color.primary.opacity(0.08) }
+        return Color.clear
     }
 }

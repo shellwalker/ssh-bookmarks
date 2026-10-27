@@ -31,6 +31,26 @@ extension SSHCommandError {
     }
 }
 
+extension ExtraOptionRejection {
+    var message: String {
+        switch self {
+        case .emptyKey:
+            return String(localized: "Option name is required.")
+        case .invalidKey:
+            return String(localized: "Option names may only contain letters.")
+        case .blockedKey(let key):
+            return L10n.format(
+                "Option %@ is blocked because it can run a command or load code on this Mac. Set it in ~/.ssh/config instead.",
+                key
+            )
+        case .emptyValue:
+            return String(localized: "Option value is required.")
+        case .controlCharacter:
+            return String(localized: "Option value cannot contain control characters.")
+        }
+    }
+}
+
 extension HostInputParser.PortError {
     var message: String {
         switch self {

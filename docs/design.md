@@ -94,7 +94,7 @@ argv 按以下顺序拼出：
   - 解码比较宽松：缺失字段使用默认值，方便将来升级 schema。
 - `SSHHost` 字段：id、label、hostname、port?、username、groupID?、tags、authMethod（automatic / publicKey / password）、identityFile?、jumpHost?、portForwards[]、extraOptions[]、isFavorite、notes、lastConnectedAt、createdAt、updatedAt。
 - 机密信息：Keychain generic password。
-  - `service` 为 bundle id，`account` 为 `host.<uuid>.password` 或 `host.<uuid>.passphrase`，`accessible` 为 WhenUnlocked。
+  - `service` 为 bundle id，`account` 为 `host.<uuid>.password`。没有私钥口令保险库，不再使用 `passphrase` 账户。`accessible` 为 WhenUnlockedThisDeviceOnly，且不同步。
   - 删除站点时同时清理对应条目。
   - 机密信息绝不写入 JSON，也绝不出现在命令行里。
 - 密码登录（M3）：

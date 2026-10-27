@@ -31,6 +31,78 @@ public enum SyncConflictNames {
     }
 }
 
+/// 同步文件的读写。macOS 上走 `NSFileCoordinator`；Linux 上直接读写，方便核心测试。
+enum SyncFileCoordination {
+    static func read(url: URL) throws -> Data? {
+        #if os(macOS)
+        try coordinatedRead(url)
+        #else
+        let fm = FileManager.default
+        guard fm.fileExists(atPath: url.path) else { return nil }
+        return try Data(contentsOf: url)
+        #endif
+    }
+
+    static func write(_ data: Data, to url: URL) throws {
+        #if os(macOS)
+        try coordinatedWrite(data, to: url)
+        #else
+        try AtomicFileWrite.write(data, to: url, permissions: 0o600)
+        #endif
+    }
+
+    #if os(macOS)
+    static func unresolvedConflictDocuments(of url: URL) -> [SyncDocument] {
+        guard FileManager.default.fileExists(atPath: url.path) else { return [] }
+        let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
+        var documents: [SyncDocument] = []
+        for version in versions {
+            guard let data = try? read(url: version.url), let document = try? SyncCodec.decode(data) else { continue }
+            documents.append(document)
+        }
+        return documents
+    }
+
+    static func resolveConflicts(of url: URL) {
+        let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
+        for version in versions {
+            version.isResolved = true
+        }
+        try? NSFileVersion.removeOtherVersionsOfItem(at: url)
+    }
+
+    private static func coordinatedRead(_ url: URL) throws -> Data? {
+        var coordinationError: NSError?
+        var result: Result<Data?, Error> = .success(nil)
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(readingItemAt: url, options: [], error: &coordinationError) { readURL in
+            guard FileManager.default.fileExists(atPath: readURL.path) else {
+                result = .success(nil)
+                return
+            }
+            result = Result { try Data(contentsOf: readURL) }
+        }
+        if let coordinationError { throw coordinationError }
+        return try result.get()
+    }
+
+    private static func coordinatedWrite(_ data: Data, to url: URL) throws {
+        var coordinationError: NSError?
+        var writeError: Error?
+        let coordinator = NSFileCoordinator()
+        coordinator.coordinate(writingItemAt: url, options: .forReplacing, error: &coordinationError) { writeURL in
+            do {
+                try AtomicFileWrite.write(data, to: writeURL, permissions: 0o600)
+            } catch {
+                writeError = error
+            }
+        }
+        if let coordinationError { throw coordinationError }
+        if let writeError { throw writeError }
+    }
+    #endif
+}
+
 public enum AtomicFileWrite {
     /// 先写同目录临时文件，再替换目标。替换前把权限设好。
     public static func write(_ data: Data, to url: URL, permissions: UInt16 = 0o600) throws {
@@ -65,10 +137,13 @@ public enum SyncReconciler {
         var mergedCopyNames: [String] = []
         for name in copyNames {
             let url = directory.appendingPathComponent(name)
-            guard let data = try? Data(contentsOf: url), let copy = try? SyncCodec.decode(data) else { continue }
+            guard let data = try? SyncFileCoordination.read(url: url), let copy = try? SyncCodec.decode(data) else { continue }
             decodedCopies.append(copy)
             mergedCopyNames.append(name)
         }
+        #if os(macOS)
+        decodedCopies.append(contentsOf: SyncFileCoordination.unresolvedConflictDocuments(of: fileURL))
+        #endif
 
         let withCopies = SyncMerger.mergeCopies(primary: remote, copies: decodedCopies, now: now, writingDeviceId: deviceId)
         let merged = SyncMerger.merge(
@@ -81,6 +156,9 @@ public enum SyncReconciler {
         for name in mergedCopyNames {
             try? fm.removeItem(at: directory.appendingPathComponent(name))
         }
+        #if os(macOS)
+        SyncFileCoordination.resolveConflicts(of: fileURL)
+        #endif
         return SyncReconcileResult(
             library: merged.document.makeLibrary(),
             conflictCount: withCopies.conflictCount + merged.conflictCount
@@ -90,12 +168,13 @@ public enum SyncReconciler {
     private static func load(_ url: URL, missing: SyncDocument) throws -> SyncDocument {
         let fm = FileManager.default
         guard fm.fileExists(atPath: url.path) else { return missing }
-        let data: Data
+        let data: Data?
         do {
-            data = try Data(contentsOf: url)
+            data = try SyncFileCoordination.read(url: url)
         } catch {
             throw SyncFormatError.unreadablePrimary
         }
+        guard let data else { return missing }
         do {
             return try SyncCodec.decode(data)
         } catch let error as SyncFormatError {
@@ -122,6 +201,6 @@ public enum SyncCodec {
     }
 
     public static func write(_ document: SyncDocument, to url: URL) throws {
-        try AtomicFileWrite.write(try encode(document), to: url, permissions: 0o600)
+        try SyncFileCoordination.write(try encode(document), to: url)
     }
 }

@@ -13,6 +13,8 @@ final class MenuSSHUITests: XCTestCase {
         let ctx = try launch(language: "en", appearance: "light")
         let app = ctx.app
         XCTAssertTrue(app.staticTexts["Recent"].waitForExistence(timeout: 15))
+        XCTAssertTrue(app.staticTexts["Production / Edge"].waitForExistence(timeout: 5))
+        shot(marked(app, id.panel), "panel-nested-en-light", screen: "panel", appearance: "light", language: "en")
         let panel = marked(app, id.panel)
         replace(marked(panel, id.panelSearch), "leaf")
         XCTAssertTrue(marked(panel, "host.Leaf").waitForExistence(timeout: 5))
@@ -64,6 +66,28 @@ final class MenuSSHUITests: XCTestCase {
         chooseMenu(app, identifier: "jump.pick.Bastion", titles: ["Bastion"])
         replace(marked(app, id.editorStartup), "echo ci-started")
         ensureOn(marked(app, id.editorForwardAgent), app: app)
+        click(marked(app, id.editorAddOption), app: app)
+        replace(marked(app, id.editorOptionKey), "ServerAliveInterval")
+        replace(marked(app, id.editorOptionValue), "15")
+        let save = marked(app, id.editorSave)
+        XCTAssertTrue(save.waitForExistence(timeout: 5))
+        XCTAssertTrue(save.isHittable, "Save must be clickable at the production hosts-window height")
+        let hostsWindow = app.windows.containing(.any, identifier: id.hosts).firstMatch
+        XCTAssertGreaterThan(hostsWindow.frame.height, 400)
+        XCTAssertLessThan(hostsWindow.frame.height, 700)
+        XCTAssertLessThanOrEqual(save.frame.maxY, hostsWindow.frame.maxY + 8)
+        shot(save, "editor-options-en-light", screen: "editor", appearance: "light", language: "en")
+        click(marked(app, id.editorAddForward), app: app)
+        let kind = marked(app, id.forwardKind)
+        XCTAssertTrue(kind.waitForExistence(timeout: 5))
+        kind.click()
+        let dynamic = app.menuItems["Dynamic"]
+        XCTAssertTrue(dynamic.waitForExistence(timeout: 3))
+        dynamic.click()
+        XCTAssertFalse(marked(app, id.forwardDestinationHost).exists)
+        XCTAssertFalse(marked(app, id.forwardDestinationPort).exists)
+        shot(kind, "forward-dynamic-en-light", screen: "forward", appearance: "light", language: "en")
+        marked(app, id.forwardCancel).click()
         click(marked(app, id.editorAddForward), app: app)
         replace(marked(app, id.forwardListen), "9090")
         replace(marked(app, id.forwardDestinationHost), "127.0.0.1")
@@ -71,7 +95,7 @@ final class MenuSSHUITests: XCTestCase {
         shot(marked(app, id.forwardListen), "forward-en-light", screen: "forward", appearance: "light", language: "en")
         marked(app, id.forwardSave).click()
         shot(marked(app, id.editorHost), "editor-filled-en-light", screen: "editor", appearance: "light", language: "en")
-        marked(app, id.editorSave).click()
+        save.click()
         XCTAssertTrue(marked(hosts, "host.CI Web").waitForExistence(timeout: 8))
 
         let host = try hostObject(named: "CI Web", in: ctx.dataDir)
@@ -80,6 +104,9 @@ final class MenuSSHUITests: XCTestCase {
         XCTAssertEqual(host["forwardAgent"] as? Bool, true)
         let forwards = host["portForwards"] as? [[String: Any]] ?? []
         XCTAssertEqual(forwards.first?["listenPort"] as? Int, 9090)
+        let options = host["extraOptions"] as? [[String: Any]] ?? []
+        XCTAssertEqual(options.first?["key"] as? String, "ServerAliveInterval")
+        XCTAssertEqual(options.first?["value"] as? String, "15")
 
         // 站点窗口在前面时，第一下只是激活面板，按钮要再点一次才会连接。
         activateWindow(containing: id.panel, app: app)
@@ -94,6 +121,7 @@ final class MenuSSHUITests: XCTestCase {
         XCTAssertTrue(argv.contains("ForwardAgent=yes"), argv.joined(separator: " "))
         XCTAssertTrue(argv.contains("-J"), argv.joined(separator: " "))
         XCTAssertTrue(argv.contains { $0.contains("9090:127.0.0.1:80") }, argv.joined(separator: " "))
+        XCTAssertTrue(argv.contains("ServerAliveInterval=15"), argv.joined(separator: " "))
         XCTAssertEqual(log["startup"] as? String, "echo ci-started")
 
         openSettings(app)
@@ -101,6 +129,66 @@ final class MenuSSHUITests: XCTestCase {
             marked(app, "settings.pane.\(pane)").click()
             shot(marked(app, id.settings), "settings-\(pane)-en-light", screen: pane, appearance: "light", language: "en")
         }
+        app.terminate()
+    }
+
+    func testEmptyImportKeyPickerAndConfirmations() throws {
+        let sshDir = try makeSSHDir()
+        let empty = #"{"schemaVersion":2,"groups":[],"hosts":[],"tombstones":[]}"#
+        let zh = try launch(language: "zh-Hans", appearance: "light", hostsJSON: empty, sshDir: sshDir)
+        XCTAssertTrue(zh.app.staticTexts["还没有站点"].waitForExistence(timeout: 15))
+        XCTAssertTrue(marked(zh.app, id.panelImport).waitForExistence(timeout: 5))
+        XCTAssertTrue(marked(zh.app, id.panelNewHost).exists)
+        shot(marked(zh.app, id.panel), "empty-import-zh-light", screen: "panel", appearance: "light", language: "zh-Hans")
+        zh.app.terminate()
+
+        let ctx = try launch(language: "en", appearance: "light", hostsJSON: empty, sshDir: sshDir)
+        let app = ctx.app
+        XCTAssertTrue(marked(app, id.panelImport).waitForExistence(timeout: 15))
+        marked(app, id.panelNewHost).click()
+        XCTAssertTrue(marked(app, id.editorKeyPicker).waitForExistence(timeout: 8))
+        shot(marked(app, id.editorKeyPicker), "key-picker-en-light", screen: "editor", appearance: "light", language: "en")
+        marked(app, id.editorCancel).click()
+        let discard = app.sheets.staticTexts["Discard unsaved changes?"].firstMatch
+        if !discard.waitForExistence(timeout: 2) {
+            XCTAssertTrue(app.dialogs.staticTexts["Discard unsaved changes?"].firstMatch.waitForExistence(timeout: 3))
+        }
+        shot(marked(app, id.editorCancel), "confirm-discard-en-light", screen: "editor", appearance: "light", language: "en")
+        let discardButton = app.buttons["Discard Changes"]
+        if discardButton.waitForExistence(timeout: 2) {
+            discardButton.click()
+        } else {
+            app.sheets.buttons["Discard Changes"].firstMatch.click()
+        }
+
+        let hosts = marked(app, id.hosts)
+        XCTAssertTrue(hosts.waitForExistence(timeout: 8))
+        marked(app, id.hostsImport).click()
+        let imported = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "Imported 1 hosts")).firstMatch
+        XCTAssertTrue(imported.waitForExistence(timeout: 8))
+        let alias = app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "HostName is saved in notes")).firstMatch
+        XCTAssertTrue(alias.exists || imported.label.contains("HostName is saved in notes"))
+        let row = marked(hosts, "host.ci-alias")
+        XCTAssertTrue(row.waitForExistence(timeout: 8))
+        row.rightClick()
+        chooseMenu(app, identifier: id.hostDelete, titles: ["Delete…"])
+        XCTAssertTrue(app.staticTexts["Delete this host?"].waitForExistence(timeout: 5))
+        shot(row, "confirm-delete-en-light", screen: "hosts", appearance: "light", language: "en")
+        app.buttons["Cancel"].firstMatch.click()
+        XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 3))
+
+        row.rightClick()
+        chooseMenu(app, identifier: id.hostEdit, titles: ["Edit…"])
+        XCTAssertTrue(marked(app, id.editorLabel).waitForExistence(timeout: 8))
+        replace(marked(app, id.editorLabel), "changed")
+        marked(app, id.editorCancel).click()
+        XCTAssertTrue(app.staticTexts["Discard unsaved changes?"].waitForExistence(timeout: 5))
+        if app.buttons["Discard Changes"].exists {
+            app.buttons["Discard Changes"].click()
+        } else {
+            app.sheets.buttons["Discard Changes"].firstMatch.click()
+        }
+        XCTAssertTrue(marked(app, "host.ci-alias").waitForExistence(timeout: 5))
         app.terminate()
     }
 
@@ -141,10 +229,10 @@ final class MenuSSHUITests: XCTestCase {
         var logURL: URL
     }
 
-    private func launch(language: String, appearance: String) throws -> Context {
+    private func launch(language: String, appearance: String, hostsJSON: String? = nil, sshDir: URL? = nil) throws -> Context {
         let dataDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("menush-ui-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
-        try fixtureJSON().write(to: dataDir.appendingPathComponent("hosts.json"), atomically: true, encoding: .utf8)
+        try (hostsJSON ?? fixtureJSON()).write(to: dataDir.appendingPathComponent("hosts.json"), atomically: true, encoding: .utf8)
         let logURL = dataDir.appendingPathComponent("terminal.log")
         let app = XCUIApplication()
         app.launchEnvironment = [
@@ -161,6 +249,9 @@ final class MenuSSHUITests: XCTestCase {
         }
         if appearance == "dark" {
             app.launchArguments += ["-AppleInterfaceStyle", "Dark"]
+        }
+        if let sshDir {
+            app.launchEnvironment["MENUSH_SSH_DIR"] = sshDir.path
         }
         app.launch()
         XCTAssertTrue(marked(app, id.panel).waitForExistence(timeout: 20))
@@ -381,6 +472,25 @@ final class MenuSSHUITests: XCTestCase {
         return [:]
     }
 
+    private func makeSSHDir() throws -> URL {
+        let dir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("menush-ssh-\(UUID().uuidString)")
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let pub = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeKeyForMenuSSHUI menush-ci@test\n"
+        try pub.write(to: dir.appendingPathComponent("id_ed25519.pub"), atomically: true, encoding: .utf8)
+        try Data("not-a-real-private-key\n".utf8).write(to: dir.appendingPathComponent("id_ed25519"))
+        try FileManager.default.setAttributes(
+            [.posixPermissions: 0o600], ofItemAtPath: dir.appendingPathComponent("id_ed25519").path)
+        try "known_hosts\n".write(to: dir.appendingPathComponent("known_hosts"), atomically: true, encoding: .utf8)
+        let config = """
+            Host ci-alias
+                HostName 10.1.0.8
+                User ci
+
+            """
+        try config.write(to: dir.appendingPathComponent("config"), atomically: true, encoding: .utf8)
+        return dir
+    }
+
     private func fixtureJSON() -> String {
         """
         {
@@ -413,12 +523,16 @@ private enum id {
     static let settings = "screen.settings"
     static let panelSearch = "panel.search"
     static let panelManage = "panel.manageHosts"
+    static let panelImport = "panel.import"
+    static let panelNewHost = "panel.newHost"
     static let hostsNew = "hosts.new"
+    static let hostsImport = "hosts.import"
     static let hostsSettings = "hosts.settings"
     static let hostsNewGroup = "hosts.newGroup"
     static let groupName = "group.name"
     static let groupCreate = "group.create"
     static let hostEdit = "host.edit"
+    static let hostDelete = "host.delete"
     static let editorLabel = "editor.label"
     static let editorHost = "editor.host"
     static let editorPort = "editor.port"
@@ -427,10 +541,16 @@ private enum id {
     static let editorForwardAgent = "editor.forwardAgent"
     static let editorUseJump = "editor.useJump"
     static let editorAddForward = "editor.addForward"
+    static let editorAddOption = "editor.addOption"
+    static let editorOptionKey = "editor.optionKey"
+    static let editorOptionValue = "editor.optionValue"
+    static let editorKeyPicker = "editor.keyPicker"
     static let editorSave = "editor.save"
     static let editorCancel = "editor.cancel"
+    static let forwardKind = "forward.kind"
     static let forwardListen = "forward.listen"
     static let forwardDestinationHost = "forward.destinationHost"
     static let forwardDestinationPort = "forward.destinationPort"
     static let forwardSave = "forward.save"
+    static let forwardCancel = "forward.cancel"
 }

@@ -46,6 +46,11 @@ struct HostManagerView: View {
                 } label: {
                     Label("Import ~/.ssh/config", systemImage: "square.and.arrow.down")
                 }
+                .accessibilityIdentifier(UITestID.hostsImport)
+                Button("Undo") { hosts.undoLastChange() }
+                    .disabled(!hosts.canUndo)
+                    .keyboardShortcut("z", modifiers: .command)
+                    .accessibilityIdentifier(UITestID.hostsUndo)
                 Button {
                     settings.pendingSettingsPane = nil
                     openWindow(id: WindowID.settings)
@@ -120,9 +125,26 @@ struct HostManagerView: View {
                 if filter == .group(group.id) { filter = .all }
             }
         } message: { group in
-            Text(verbatim: L10n.format("Hosts in “%@” will be moved to Ungrouped.", group.name))
+            Text(
+                verbatim: L10n.format(
+                    "Hosts in “%@” move to Ungrouped. Nested groups move up one level. ⌘Z can undo this.",
+                    group.name
+                )
+            )
         }
-        .onAppear { AppActivation.bringToFront() }
+        .onAppear {
+            AppActivation.bringToFront()
+            consumeNewHostRequest()
+        }
+        .onChange(of: hosts.presentNewHost) { _, _ in
+            consumeNewHostRequest()
+        }
+    }
+
+    private func consumeNewHostRequest() {
+        guard hosts.presentNewHost else { return }
+        hosts.presentNewHost = false
+        editingHost = SSHHost(label: "", hostname: "", groupID: currentGroupID)
     }
 
     private var currentGroupID: UUID? {
@@ -245,9 +267,30 @@ struct HostManagerView: View {
             ContentUnavailableView {
                 Label(query.isEmpty ? LocalizedStringKey("No hosts") : "No matching hosts", systemImage: "server.rack")
             } actions: {
-                Button("New Host") {
-                    editingHost = SSHHost(label: "", hostname: "", groupID: currentGroupID)
+                if query.isEmpty {
+                    Button("Import ~/.ssh/config") { hosts.importSSHConfig() }
+                        .buttonStyle(.borderedProminent)
+                        .accessibilityIdentifier(UITestID.hostsImport)
+                    Button("New Host") {
+                        editingHost = SSHHost(label: "", hostname: "", groupID: currentGroupID)
+                    }
+                } else {
+                    Button("New Host") {
+                        editingHost = SSHHost(label: "", hostname: "", groupID: currentGroupID)
+                    }
                 }
+            }
+            if let error = hosts.lastError {
+                Text(verbatim: error)
+                    .font(.callout)
+                    .foregroundStyle(.red)
+                    .padding(8)
+            } else if let notice = hosts.lastNotice {
+                Text(verbatim: notice)
+                    .font(.callout)
+                    .foregroundStyle(.orange)
+                    .multilineTextAlignment(.center)
+                    .padding(8)
             }
         } else {
             List(list, selection: $selection) { host in
@@ -322,5 +365,6 @@ struct HostManagerView: View {
         }
         Divider()
         Button("Delete…", role: .destructive) { hostPendingDeletion = host }
+            .accessibilityIdentifier(UITestID.hostDelete)
     }
 }
