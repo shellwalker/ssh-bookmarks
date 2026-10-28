@@ -70,6 +70,7 @@ jobs:
 
   ui:
     name: UI automation and screenshots
+    needs: e2e
     runs-on: macos-14
     timeout-minutes: 25
     steps:
@@ -152,6 +153,7 @@ jobs:
 
   e2e:
     name: SSH and sync end-to-end
+    needs: build
     runs-on: macos-14
     timeout-minutes: 20
     steps:
