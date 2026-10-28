@@ -145,6 +145,63 @@ public struct SSHCommandBuilder: Sendable {
         return args
     }
 
+    /// 后台快捷隧道的完整 argv。只接受一条本地 `-L`。
+    ///
+    /// OpenSSH 采用第一次出现的 `-o`。因此 `StrictHostKeyChecking=yes`、`ExitOnForwardFailure=yes`
+    /// 和密码登录以外的 `BatchMode=yes` 写在用户选项之前，用户不能把主机密钥检查改成 no。
+    /// `ServerAliveInterval` / `ServerAliveCountMax` 写在用户选项之后，用户自己的值优先生效。
+    public func tunnelArguments(for host: SSHHost, forward: PortForward) throws -> [String] {
+        guard forward.kind == .local else { throw SSHCommandError.invalidPortForward("quick tunnel") }
+        guard Self.isValidSSHPath(sshPath) else { throw SSHCommandError.invalidSSHPath(sshPath) }
+        let hostname = host.hostname.trimmingCharacters(in: Self.plainSpaces)
+        guard !hostname.isEmpty else { throw SSHCommandError.emptyHostname }
+        guard Self.isValidHostname(hostname) else { throw SSHCommandError.invalidHostname(hostname) }
+
+        var args = [sshPath, "-N", "-o", "ExitOnForwardFailure=yes", "-o", "StrictHostKeyChecking=yes"]
+        if host.authMethod != .password {
+            args += ["-o", "BatchMode=yes"]
+        }
+
+        let username = host.username.trimmingCharacters(in: Self.plainSpaces)
+        if !username.isEmpty {
+            guard Self.isValidUsername(username) else { throw SSHCommandError.invalidUsername(username) }
+            args += ["-l", username]
+        }
+        if let port = host.port {
+            guard (1...65535).contains(port) else { throw SSHCommandError.invalidPort(port) }
+            args += ["-p", String(port)]
+        }
+        if host.authMethod == .publicKey, let identity = host.identityFile?.trimmingCharacters(in: Self.plainSpaces), !identity.isEmpty {
+            guard Self.isValidPath(identity) else { throw SSHCommandError.invalidIdentityFile(identity) }
+            args += ["-i", expandTilde(identity)]
+            args += ["-o", "IdentitiesOnly=yes"]
+        }
+        if let jump = host.jumpHost?.trimmingCharacters(in: Self.plainSpaces), !jump.isEmpty {
+            guard Self.isValidJumpSpec(jump) else { throw SSHCommandError.invalidJumpHost(jump) }
+            args += ["-J", jump]
+        }
+
+        args += try forwardArguments(forward)
+        if host.forwardAgent {
+            args += ["-o", "ForwardAgent=yes"]
+        }
+        for option in host.extraOptions {
+            guard Self.isValidOptionKey(option.key), Self.isValidOptionValue(option.value) else {
+                throw SSHCommandError.invalidOption(option.key)
+            }
+            args += ["-o", "\(option.key)=\(option.value)"]
+        }
+        args += ["-o", "ServerAliveInterval=15", "-o", "ServerAliveCountMax=3", "--", hostname]
+        return args
+    }
+
+    /// 交互式连接不重复带上已经在后台跑着的快捷隧道，避免两边抢同一个本地端口。
+    public static func omittingRunningTunnels(_ host: SSHHost, runningForwardIDs: Set<UUID>) -> SSHHost {
+        var copy = host
+        copy.portForwards.removeAll { runningForwardIDs.contains($0.id) }
+        return copy
+    }
+
     /// 给 Terminal / iTerm2 / Ghostty “输入”用的命令行。
     public func commandLine(for host: SSHHost) throws -> String {
         ShellQuoting.join(try argv(for: host))

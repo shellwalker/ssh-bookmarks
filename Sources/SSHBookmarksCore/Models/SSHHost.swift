@@ -28,6 +28,10 @@ public struct PortForward: Codable, Hashable, Identifiable, Sendable {
     /// dynamic 类型不需要目标地址。
     public var destinationHost: String?
     public var destinationPort: Int?
+    /// 为真时，这条本地转发出现在菜单栏面板里，可以不打开终端就开关。旧数据默认否。
+    public var quickToggle: Bool
+    /// 意外断开后是否自动重连。默认否。只对快捷隧道有意义。
+    public var reconnect: Bool
 
     public init(
         id: UUID = UUID(),
@@ -35,7 +39,9 @@ public struct PortForward: Codable, Hashable, Identifiable, Sendable {
         bindAddress: String? = nil,
         listenPort: Int,
         destinationHost: String? = nil,
-        destinationPort: Int? = nil
+        destinationPort: Int? = nil,
+        quickToggle: Bool = false,
+        reconnect: Bool = false
     ) {
         self.id = id
         self.kind = kind
@@ -43,6 +49,36 @@ public struct PortForward: Codable, Hashable, Identifiable, Sendable {
         self.listenPort = listenPort
         self.destinationHost = destinationHost
         self.destinationPort = destinationPort
+        self.quickToggle = quickToggle
+        self.reconnect = reconnect
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case id, kind, bindAddress, listenPort, destinationHost, destinationPort, quickToggle, reconnect
+    }
+
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        id = try c.decode(UUID.self, forKey: .id)
+        kind = try c.decode(Kind.self, forKey: .kind)
+        bindAddress = try c.decodeIfPresent(String.self, forKey: .bindAddress)
+        listenPort = try c.decode(Int.self, forKey: .listenPort)
+        destinationHost = try c.decodeIfPresent(String.self, forKey: .destinationHost)
+        destinationPort = try c.decodeIfPresent(Int.self, forKey: .destinationPort)
+        quickToggle = try c.decodeIfPresent(Bool.self, forKey: .quickToggle) ?? false
+        reconnect = try c.decodeIfPresent(Bool.self, forKey: .reconnect) ?? false
+    }
+
+    public func encode(to encoder: Encoder) throws {
+        var c = encoder.container(keyedBy: CodingKeys.self)
+        try c.encode(id, forKey: .id)
+        try c.encode(kind, forKey: .kind)
+        try c.encodeIfPresent(bindAddress, forKey: .bindAddress)
+        try c.encode(listenPort, forKey: .listenPort)
+        try c.encodeIfPresent(destinationHost, forKey: .destinationHost)
+        try c.encodeIfPresent(destinationPort, forKey: .destinationPort)
+        try c.encode(quickToggle, forKey: .quickToggle)
+        try c.encode(reconnect, forKey: .reconnect)
     }
 }
 

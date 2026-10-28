@@ -2,7 +2,7 @@ import Foundation
 
 /// 持久化到 hosts.json 的完整数据。
 public struct HostLibrary: Codable, Equatable, Sendable {
-    public static let currentSchemaVersion = 2
+    public static let currentSchemaVersion = 3
 
     public var schemaVersion: Int
     public var groups: [HostGroup]
@@ -38,7 +38,8 @@ public struct HostLibrary: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        try c.encode(schemaVersion, forKey: .schemaVersion)
+        // 保存时写成当前版本。本地文件仍可读更新的版本，避免一次解码失败就把用户的库改名备份。
+        try c.encode(Self.currentSchemaVersion, forKey: .schemaVersion)
         try c.encode(groups, forKey: .groups)
         try c.encode(hosts, forKey: .hosts)
         try c.encode(tombstones, forKey: .tombstones)

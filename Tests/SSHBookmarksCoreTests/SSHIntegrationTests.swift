@@ -220,6 +220,93 @@ final class SSHIntegrationTests: XCTestCase {
         XCTAssertTrue(output.contains("import-ok"), output)
     }
 
+    /// 生产隧道 argv 把 StrictHostKeyChecking=yes 放在用户选项之前，所以夹具不能靠 no 绕过。
+    /// 先 keyscan 进临时 known_hosts，再经 -L 访问只在本机环回上的 HTTP，最后确认 ssh 和端口都没留下。
+    func testQuickTunnelForwardsTrafficAndExitsCleanly() throws {
+        let fixture = try loadFixture()
+        let name = "tunnel-\(UUID().uuidString)"
+        let directory = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent(name, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let knownHosts = directory.appendingPathComponent("known_hosts")
+        let scanned = try run(
+            ["/usr/bin/ssh-keyscan", "-p", "\(fixture.portA)", "127.0.0.1"], env: cleanEnvironment(fixture), timeout: 15)
+        XCTAssertTrue(scanned.1.contains("ssh-"), scanned.1)
+        try scanned.1.write(to: knownHosts, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: knownHosts.path)
+
+        let portFile = directory.appendingPathComponent("http-port")
+        let server = try startProcess(
+            [try pythonPath(), "-c", Self.httpServerSource, portFile.path], env: cleanEnvironment(fixture), logName: "http")
+        children.append(server)
+        let remotePort = try waitForIntFile(portFile)
+        guard let held = LocalPortProbe.hold() else { throw IntegrationFailure("no free local port") }
+        let localPort = held.port
+        held.release()
+        let forward = PortForward(
+            kind: .local, listenPort: localPort, destinationHost: "127.0.0.1", destinationPort: remotePort, quickToggle: true)
+        var host = SSHHost(
+            label: "ci", hostname: "127.0.0.1", port: fixture.portA, username: fixture.user,
+            authMethod: .publicKey, identityFile: fixture.key)
+        host.extraOptions = [
+            SSHOption(key: "UserKnownHostsFile", value: knownHosts.path),
+            SSHOption(key: "ConnectTimeout", value: "8"),
+        ]
+        let argv = try SSHCommandBuilder().tunnelArguments(for: host, forward: forward)
+        XCTAssertTrue(argv.contains("StrictHostKeyChecking=yes"))
+        XCTAssertFalse(argv.contains { $0.contains("StrictHostKeyChecking=no") })
+        XCTAssertFalse(argv.contains { $0.contains("/dev/null") })
+        let tunnel = try startProcess(argv, env: cleanEnvironment(fixture), logName: "tunnel")
+        children.append(tunnel)
+
+        var body = ""
+        for _ in 0..<25 {
+            if !tunnel.isRunning { break }
+            let result = try run(
+                ["/usr/bin/curl", "-fsS", "http://127.0.0.1:\(localPort)/"], env: cleanEnvironment(fixture), timeout: 4)
+            body = result.1
+            if result.0 == 0, body.contains("tunnel-ok") { break }
+            Thread.sleep(forTimeInterval: 0.3)
+        }
+        XCTAssertTrue(body.contains("tunnel-ok"), body + logTail("tunnel") + logTail("http"))
+
+        let pid = tunnel.processIdentifier
+        tunnel.terminate()
+        tunnel.waitUntilExit()
+        XCTAssertFalse(tunnel.isRunning)
+        let stillThere = try run(["/bin/kill", "-0", "\(pid)"], env: cleanEnvironment(fixture), timeout: 5)
+        XCTAssertNotEqual(stillThere.0, 0, "ssh \(pid) still running")
+        XCTAssertTrue(LocalPortProbe.isFree(port: localPort), "local port \(localPort) still open")
+    }
+
+    private static let httpServerSource = """
+        import http.server, socketserver, sys
+        class Handler(http.server.BaseHTTPRequestHandler):
+            def do_GET(self):
+                body = b"tunnel-ok"
+                self.send_response(200)
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            def log_message(self, fmt, *args):
+                return
+        server = socketserver.TCPServer(("127.0.0.1", 0), Handler)
+        open(sys.argv[1], "w").write(str(server.server_address[1]))
+        server.serve_forever()
+        """
+
+    private func waitForIntFile(_ url: URL) throws -> Int {
+        let deadline = Date().addingTimeInterval(8)
+        while Date() < deadline {
+            if let text = try? String(contentsOf: url, encoding: .utf8) {
+                let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if let port = Int(trimmed), port > 0 { return port }
+            }
+            Thread.sleep(forTimeInterval: 0.1)
+        }
+        throw IntegrationFailure("HTTP server did not publish a port\n\(logTail("http"))")
+    }
+
     // MARK: - Helpers
 
     private struct Fixture {
