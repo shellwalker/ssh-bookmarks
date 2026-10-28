@@ -86,6 +86,9 @@ jobs:
           uname -m
 
       - name: UI tests
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          SSHBOOKMARKS_CHANNEL: development
         run: Scripts/ci_ui_tests.sh
 
       - name: Screenshot summary
