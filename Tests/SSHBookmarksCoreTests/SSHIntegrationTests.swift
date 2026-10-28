@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 
 @testable import SSHBookmarksCore
