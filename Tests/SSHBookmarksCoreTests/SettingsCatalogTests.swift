@@ -14,7 +14,10 @@ final class SettingsCatalogTests: XCTestCase {
 
     func testGroups() {
         let general = SettingsCatalog.groups(in: .general)
-        XCTAssertEqual(general.map { $0.map(\.id) }, [[.appearance, .language], [.launchAtLogin, .dockIcon, .closePanelAfterConnect]])
+        XCTAssertEqual(
+            general.map { $0.map(\.id) },
+            [[.appearance, .language], [.launchAtLogin, .dockIcon, .closePanelAfterConnect, .showTunnelCount]]
+        )
     }
 
     func testSearchEnglishChineseAndLocalizedTitles() {
