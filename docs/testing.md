@@ -1,12 +1,12 @@
 # 自动化测试
 
-CI 在 `macos-14` arm64 runner 上分三个 job 并行跑。任一失败都会让整次工作流变红，没有 `continue-on-error`。
+CI 在一台 `macos-14` arm64 runner 上按顺序跑完。排队中的并行 job 曾在大约 15 分钟后被取消，所以现在合成一个 job。任一失败都会让整次工作流变红，没有 `continue-on-error`。
 
-| Job | 做什么 |
+| 阶段 | 做什么 |
 | --- | --- |
 | Build & test | `swift-format`、`swift test`（核心库）、`Scripts/build_app.sh`、打包 zip |
-| UI automation and screenshots | 启动测试模式的 `.app`，用 XCUITest 走主路径，并截全屏 |
 | SSH and sync end-to-end | 本机两个临时 sshd，加上同步文件 schema 检查 |
+| UI automation and screenshots | 启动测试模式的 `.app`，用 XCUITest 走主路径，并截全屏 |
 
 触发条件与原来的构建一样：推送到 `develop` / `main`，或向这两个分支提 PR。发布工作流 `release.yml` 在打包之前也会跑同一套 sshd 集成测试（`SSHBOOKMARKS_INTEGRATION=1`，旧名 `MENUSH_INTEGRATION` 仍有效）。界面测试仍只在 PR / `develop` 的 `build.yml` 里跑。
 
