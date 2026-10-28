@@ -112,10 +112,18 @@ final class SSHBookmarksUITests: XCTestCase {
         // 站点窗口在前面时，第一下只是激活面板，按钮要再点一次才会连接。
         activateWindow(containing: id.panel, app: app)
         let row = marked(panel, "host.CI Web")
-        row.click()
-        if !FileManager.default.fileExists(atPath: ctx.logURL.path) {
+        for _ in 0..<6 {
+            if row.isHittable { break }
+            panel.swipeUp()
+        }
+        for _ in 0..<4 {
+            if FileManager.default.fileExists(atPath: ctx.logURL.path) { break }
+            if row.isHittable {
+                row.click()
+            } else {
+                panel.swipeUp()
+            }
             Thread.sleep(forTimeInterval: 0.4)
-            row.click()
         }
         let log = try waitForLog(ctx.logURL)
         let argv = log["argv"] as? [String] ?? []
