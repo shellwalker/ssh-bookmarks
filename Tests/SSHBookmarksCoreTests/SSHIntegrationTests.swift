@@ -276,7 +276,7 @@ final class SSHIntegrationTests: XCTestCase {
         XCTAssertFalse(tunnel.isRunning)
         let stillThere = try run(["/bin/kill", "-0", "\(pid)"], env: cleanEnvironment(fixture), timeout: 5)
         XCTAssertNotEqual(stillThere.0, 0, "ssh \(pid) still running")
-        XCTAssertTrue(LocalPortProbe.isFree(port: localPort), "local port \(localPort) still open")
+        XCTAssertFalse(Self.acceptsConnections(port: localPort), "local port \(localPort) still accepts connections")
     }
 
     private static let httpServerSource = """
@@ -294,6 +294,23 @@ final class SSHIntegrationTests: XCTestCase {
         open(sys.argv[1], "w").write(str(server.server_address[1]))
         server.serve_forever()
         """
+
+    /// 监听套接字关掉后，端口可能还在 TIME_WAIT，bind 会失败。这里用 connect：没人听就应被拒绝。
+    private static func acceptsConnections(port: Int) -> Bool {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        if fd < 0 { return false }
+        defer { close(fd) }
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = UInt16(port).bigEndian
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let result = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                Darwin.connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        return result == 0
+    }
 
     private func waitForIntFile(_ url: URL) throws -> Int {
         let deadline = Date().addingTimeInterval(8)

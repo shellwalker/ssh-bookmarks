@@ -328,11 +328,11 @@ final class SSHBookmarksUITests: XCTestCase {
         address.sin_addr.s_addr = inet_addr("127.0.0.1")
         let bound = withUnsafePointer(to: &address) {
             $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+                Darwin.bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
             }
         }
         XCTAssertEqual(bound, 0, "could not hold port \(port)")
-        _ = listen(fd, 1)
+        _ = Darwin.listen(fd, 1)
         return fd
     }
 
