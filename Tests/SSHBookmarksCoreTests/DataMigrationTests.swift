@@ -48,12 +48,14 @@ final class DataMigrationTests: XCTestCase {
         legacy.set(["zh-Hans"], forKey: "AppleLanguages")
         legacy.set("/tmp/old-ssh", forKey: "sshPath")
         current.set("/usr/bin/ssh", forKey: "sshPath")
+        // 全局域里通常已经有 AppleLanguages，缺省键才复制，不能盖掉进程已有的语言。
+        current.set(["en"], forKey: "AppleLanguages")
 
         let copied = DefaultsMigration.migrate(from: legacy, into: current)
-        XCTAssertEqual(copied, ["appearance", "syncEnabled", "AppleLanguages"])
+        XCTAssertEqual(copied, ["appearance", "syncEnabled"])
         XCTAssertEqual(current.string(forKey: "appearance"), "dark")
         XCTAssertEqual(current.bool(forKey: "syncEnabled"), false)
-        XCTAssertEqual(current.stringArray(forKey: "AppleLanguages"), ["zh-Hans"])
+        XCTAssertEqual(current.stringArray(forKey: "AppleLanguages"), ["en"])
         XCTAssertEqual(current.string(forKey: "sshPath"), "/usr/bin/ssh")
         XCTAssertEqual(current.bool(forKey: DefaultsMigration.markerKey), true)
 

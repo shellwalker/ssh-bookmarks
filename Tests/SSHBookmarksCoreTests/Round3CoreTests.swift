@@ -35,12 +35,12 @@ final class Round3CoreTests: XCTestCase {
             authMethod: .publicKey,
             identityFile: "~/.ssh/id_ed25519",
             jumpHost: "bastion",
-            forwardAgent: true,
             extraOptions: [
                 SSHOption(key: "StrictHostKeyChecking", value: "no"),
                 SSHOption(key: "ServerAliveInterval", value: "5"),
                 SSHOption(key: "UserKnownHostsFile", value: "/tmp/known"),
-            ]
+            ],
+            forwardAgent: true
         )
         let forward = PortForward(kind: .local, listenPort: 15432, destinationHost: "10.0.0.8", destinationPort: 5432, quickToggle: true)
         let other = PortForward(kind: .remote, listenPort: 1, destinationHost: "h", destinationPort: 2)
@@ -67,7 +67,7 @@ final class Round3CoreTests: XCTestCase {
         XCTAssertFalse(args.contains("StrictHostKeyChecking=no") && args.first == "no")
         XCTAssertFalse(args.contains("UserKnownHostsFile=/dev/null"))
 
-        host.authMethod = .password
+        host.authMethod = AuthMethod.password
         host.identityFile = nil
         let passwordArgs = try SSHCommandBuilder().tunnelArguments(for: host, forward: forward)
         XCTAssertFalse(passwordArgs.contains("BatchMode=yes"))
