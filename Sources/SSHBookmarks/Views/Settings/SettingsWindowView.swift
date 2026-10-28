@@ -15,10 +15,19 @@ struct SettingsWindowView: View {
 
     var body: some View {
         NavigationSplitView {
-            List(SettingsPaneID.allCases, selection: $pane) { pane in
-                Label(pane.title, systemImage: pane.symbol)
-                    .accessibilityIdentifier(UITestID.settingsPane(pane.rawValue))
-                    .tag(pane)
+            VStack(spacing: 0) {
+                List(SettingsPaneID.allCases, selection: $pane) { pane in
+                    Label(pane.title, systemImage: pane.symbol)
+                        .accessibilityIdentifier(UITestID.settingsPane(pane.rawValue))
+                        .tag(pane)
+                }
+                Text("SSH bookmarks in your menu bar.")
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 12)
+                    .accessibilityIdentifier("settings.slogan")
             }
             .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 240)
         } detail: {
@@ -67,11 +76,18 @@ struct SettingsWindowView: View {
 
     @ViewBuilder
     private func paneContent(_ pane: SettingsPaneID) -> some View {
-        ForEach(Array(SettingsCatalog.groups(in: pane).enumerated()), id: \.offset) { _, group in
-            card(group)
-        }
-        if pane == .hosts {
-            DataFilePathLabel()
+        switch pane {
+        case .diagnostics:
+            DiagnosticsPage()
+        case .about:
+            AboutPage()
+        default:
+            ForEach(Array(SettingsCatalog.groups(in: pane).enumerated()), id: \.offset) { _, group in
+                card(group)
+            }
+            if pane == .hosts {
+                DataFilePathLabel()
+            }
         }
     }
 
@@ -125,5 +141,155 @@ private struct DataFilePathLabel: View {
             .foregroundStyle(.secondary)
             .textSelection(.enabled)
             .padding(.leading, 4)
+    }
+}
+
+@MainActor
+private struct DiagnosticsPage: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var hosts: HostStoreModel
+    @State private var notice: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsSection("Local Log") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(
+                        "The log records app version, connection and tunnel events, exit codes, and error categories. It stays on this Mac."
+                    )
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
+                    SettingsItemRow(id: .diagnosticFile, showsDivider: true)
+                    SettingsItemRow(id: .diagnosticRedactNames, showsDivider: true)
+                    infoRow("Retention", value: "7 days")
+                    infoRow("Size Limit", value: "About 10 MiB · up to 5 files")
+                    infoRow("Current Log", value: currentSummary)
+                    Text(verbatim: DiagnosticLog.logDirectory().path)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .textSelection(.enabled)
+                        .padding(.horizontal, 12)
+                    HStack {
+                        Button("Open Log Folder") {
+                            notice = DiagnosticActions.revealLogFolder()
+                        }
+                        .accessibilityIdentifier("diagnostics.open")
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.bottom, 10)
+                    if let notice {
+                        Text(verbatim: notice)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.secondary)
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 8)
+                    }
+                }
+            }
+            SettingsSection("Export Diagnostics") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text(exportDescription)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
+                    Button("Export Diagnostic Log…") { DiagnosticActions.export(settings: settings, hosts: hosts) }
+                        .buttonStyle(.borderedProminent)
+                        .padding(.horizontal, 12)
+                        .accessibilityIdentifier("diagnostics.export")
+                    Text("After you reproduce a problem, export the latest log and note the steps and the time it happened.")
+                        .font(.system(size: 11))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                    Button("Copy Diagnostic Info") { DiagnosticActions.copy(settings: settings, hosts: hosts) }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                        .accessibilityIdentifier("diagnostics.copy")
+                }
+            }
+        }
+    }
+
+    private var exportDescription: LocalizedStringKey {
+        LocalizedStringKey(
+            "The ZIP contains the app version, macOS version, ssh version and path, terminal choice, "
+                + "and recent connection and tunnel events. It never contains passwords, tokens, askpass secrets, "
+                + "or private keys. With redaction on, hostnames and usernames are removed too."
+        )
+    }
+
+    private var currentSummary: String {
+        let files = DiagnosticLog.snapshots()
+        let bytes = files.reduce(0) { $0 + $1.byteCount }
+        return "\(files.count) files · \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))"
+    }
+
+    private func infoRow(_ title: LocalizedStringKey, value: LocalizedStringKey) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13, weight: .medium))
+            Spacer()
+            Text(value).font(.system(size: 12)).foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 4)
+    }
+}
+
+@MainActor
+private struct AboutPage: View {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            SettingsSection("SSH Bookmarks") {
+                VStack(spacing: 0) {
+                    aboutRow("Version", value: AppBuildInfo.versionLine)
+                    Divider().padding(.leading, 12)
+                    aboutRow("Build", value: AppBuildInfo.build)
+                    Divider().padding(.leading, 12)
+                    Text("SSH bookmarks in your menu bar.")
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                        .accessibilityIdentifier("about.slogan")
+                }
+            }
+            SettingsSection {
+                SettingsItemRow(id: .sourceCode, showsDivider: false)
+            }
+        }
+    }
+
+    private func aboutRow(_ title: LocalizedStringKey, value: String) -> some View {
+        HStack {
+            Text(title).font(.system(size: 13, weight: .medium))
+            Spacer()
+            Text(verbatim: value)
+                .font(.system(size: 12))
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+}
+
+enum AppBuildInfo {
+    static var versionLine: String {
+        let info = Bundle.main.infoDictionary
+        let short = info?["CFBundleShortVersionString"] as? String ?? "dev"
+        let channel = info?["SSHBookmarksChannel"] as? String
+        let label = channel == "release" ? String(localized: "Release") : String(localized: "Development")
+        return "\(short) · \(label)"
+    }
+
+    static var build: String {
+        Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0"
     }
 }

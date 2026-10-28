@@ -51,6 +51,8 @@ jobs:
       - name: Build app
         env:
           ARCH: arm64
+          BUILD_NUMBER: ${{ github.run_number }}
+          SSHBOOKMARKS_CHANNEL: development
         run: Scripts/build_app.sh
 
       - name: Package

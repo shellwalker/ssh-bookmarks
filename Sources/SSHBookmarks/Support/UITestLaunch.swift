@@ -51,6 +51,14 @@ enum UITestLaunch {
         return URL(fileURLWithPath: path)
     }
 
+    static var fakeTunnelFailure: String? {
+        EnvironmentAlias.string(
+            primary: ProductEnvironment.fakeTunnelFailure,
+            legacy: ProductEnvironment.fakeTunnelFailureLegacy,
+            environment: environment
+        )
+    }
+
     static var forcedAppearance: AppearanceMode? {
         switch EnvironmentAlias.string(
             primary: ProductEnvironment.appearance,
@@ -112,6 +120,7 @@ struct UITestContainer: ViewModifier {
 /// 稳定的 accessibilityIdentifier。UI 测试目标不能链接 App，字面量需与这里保持一致。
 enum UITestID {
     static let panel = "screen.panel"
+    static let panelTunnelBadge = "panel.tunnelBadge"
     static let hosts = "screen.hosts"
     static let settings = "screen.settings"
     static let panelSearch = "panel.search"
@@ -152,6 +161,13 @@ enum UITestID {
     static let forwardDestinationPort = "forward.destinationPort"
     static let forwardSave = "forward.save"
     static let forwardCancel = "forward.cancel"
+    static let editorQuickTunnel = "editor.quickTunnel"
+    static let editorReconnect = "editor.reconnect"
+
+    static func tunnelToggle(_ label: String, _ port: Int) -> String { "tunnel.toggle.\(label).\(port)" }
+    static func tunnelStop(_ label: String, _ port: Int) -> String { "tunnel.stop.\(label).\(port)" }
+    static func tunnelTrust(_ label: String) -> String { "tunnel.trust.\(label)" }
+    static func tunnelMessage(_ label: String) -> String { "tunnel.message.\(label)" }
 
     static func host(_ label: String) -> String { "host.\(label)" }
     static func group(_ name: String) -> String { "group.\(name)" }

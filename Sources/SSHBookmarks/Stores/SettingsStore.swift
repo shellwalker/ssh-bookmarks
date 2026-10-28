@@ -15,6 +15,9 @@ final class SettingsStore: ObservableObject {
         static let openMode = "terminalOpenMode"
         static let sshPath = "sshPath"
         static let closePanelAfterConnect = "closePanelAfterConnect"
+        static let showTunnelCount = "showTunnelCount"
+        static let diagnosticLog = "diagnosticLogEnabled"
+        static let diagnosticRedactNames = "diagnosticRedactNames"
         static let syncEnabled = "syncEnabled"
         static let syncFolder = "syncFolderPath"
         static let deviceId = "syncDeviceId"
@@ -69,6 +72,21 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(closePanelAfterConnect, forKey: Keys.closePanelAfterConnect) }
     }
 
+    /// 菜单栏图标在隧道数量大于 0 时显示数字。默认开。
+    @Published var showTunnelCount: Bool {
+        didSet { defaults.set(showTunnelCount, forKey: Keys.showTunnelCount) }
+    }
+
+    /// 诊断文件默认关。os.Logger 不受这个开关影响。
+    @Published var diagnosticLogEnabled: Bool {
+        didSet { defaults.set(diagnosticLogEnabled, forKey: Keys.diagnosticLog) }
+    }
+
+    /// 主机名和用户名默认打码。密码、令牌和私钥始终打码，没有相反的开关。
+    @Published var diagnosticRedactNames: Bool {
+        didSet { defaults.set(diagnosticRedactNames, forKey: Keys.diagnosticRedactNames) }
+    }
+
     /// 默认关闭。打开前要明确告诉用户：同步文件里的主机名和用户名是明文。
     @Published var syncEnabled: Bool {
         didSet { defaults.set(syncEnabled, forKey: Keys.syncEnabled) }
@@ -117,6 +135,9 @@ final class SettingsStore: ObservableObject {
         openMode = TerminalOpenMode(rawValue: defaults.string(forKey: Keys.openMode) ?? "") ?? .newWindow
         sshPath = defaults.string(forKey: Keys.sshPath) ?? "/usr/bin/ssh"
         closePanelAfterConnect = defaults.object(forKey: Keys.closePanelAfterConnect) as? Bool ?? true
+        showTunnelCount = defaults.object(forKey: Keys.showTunnelCount) as? Bool ?? true
+        diagnosticLogEnabled = defaults.object(forKey: Keys.diagnosticLog) as? Bool ?? false
+        diagnosticRedactNames = defaults.object(forKey: Keys.diagnosticRedactNames) as? Bool ?? true
         syncEnabled = defaults.object(forKey: Keys.syncEnabled) as? Bool ?? false
         let storedFolder = defaults.string(forKey: Keys.syncFolder)
         syncFolderPath = (storedFolder?.isEmpty == false) ? storedFolder : nil

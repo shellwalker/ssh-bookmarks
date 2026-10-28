@@ -16,6 +16,7 @@ struct SettingsItemRow: View {
         case .launchAtLogin: LaunchAtLoginRow(showsDivider: showsDivider)
         case .dockIcon: DockIconRow(showsDivider: showsDivider)
         case .closePanelAfterConnect: ClosePanelRow(showsDivider: showsDivider)
+        case .showTunnelCount: TunnelCountRow(showsDivider: showsDivider)
         case .sessionTerminal: SessionTerminalRow(showsDivider: showsDivider)
         case .openMode: OpenModeRow(showsDivider: showsDivider)
         case .sshPath: SSHPathRow(showsDivider: showsDivider)
@@ -24,6 +25,10 @@ struct SettingsItemRow: View {
         case .dataFile: DataFileRow(showsDivider: showsDivider)
         case .sync: SyncRow(showsDivider: showsDivider)
         case .syncFolder: SyncFolderRow(showsDivider: showsDivider)
+        case .diagnosticFile: DiagnosticFileRow(showsDivider: showsDivider)
+        case .diagnosticRedactNames: DiagnosticRedactRow(showsDivider: showsDivider)
+        case .diagnosticExport: DiagnosticExportRow(showsDivider: showsDivider)
+        case .diagnosticCopy: DiagnosticCopyRow(showsDivider: showsDivider)
         case .version: VersionRow(showsDivider: showsDivider)
         case .sourceCode: SourceCodeRow(showsDivider: showsDivider)
         }
@@ -468,6 +473,81 @@ private struct SyncFolderRow: View {
         guard panel.runModal() == .OK, let url = panel.url else { return }
         settings.syncFolderPath = url.path
         if settings.syncEnabled { hosts.syncNow() }
+    }
+}
+
+// MARK: - Diagnostics
+
+@MainActor
+private struct DiagnosticFileRow: View {
+    @EnvironmentObject private var settings: SettingsStore
+    let showsDivider: Bool
+
+    var body: some View {
+        row(.diagnosticFile, showsDivider: showsDivider) {
+            Toggle("", isOn: $settings.diagnosticLogEnabled)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .accessibilityIdentifier("diagnostics.file")
+        }
+    }
+}
+
+@MainActor
+private struct DiagnosticRedactRow: View {
+    @EnvironmentObject private var settings: SettingsStore
+    let showsDivider: Bool
+
+    var body: some View {
+        row(.diagnosticRedactNames, showsDivider: showsDivider) {
+            Toggle("", isOn: $settings.diagnosticRedactNames)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .accessibilityIdentifier("diagnostics.redact")
+        }
+    }
+}
+
+@MainActor
+private struct DiagnosticExportRow: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var hosts: HostStoreModel
+    let showsDivider: Bool
+
+    var body: some View {
+        row(.diagnosticExport, showsDivider: showsDivider) {
+            Button("Export Diagnostic Log…") { DiagnosticActions.export(settings: settings, hosts: hosts) }
+                .accessibilityIdentifier("diagnostics.export")
+        }
+    }
+}
+
+@MainActor
+private struct DiagnosticCopyRow: View {
+    @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var hosts: HostStoreModel
+    let showsDivider: Bool
+
+    var body: some View {
+        row(.diagnosticCopy, showsDivider: showsDivider) {
+            Button("Copy Diagnostic Info") { DiagnosticActions.copy(settings: settings, hosts: hosts) }
+                .accessibilityIdentifier("diagnostics.copy")
+        }
+    }
+}
+
+@MainActor
+private struct TunnelCountRow: View {
+    @EnvironmentObject private var settings: SettingsStore
+    let showsDivider: Bool
+
+    var body: some View {
+        row(.showTunnelCount, showsDivider: showsDivider) {
+            Toggle("", isOn: $settings.showTunnelCount)
+                .toggleStyle(.switch)
+                .labelsHidden()
+                .accessibilityIdentifier("settings.tunnelCount")
+        }
     }
 }
 

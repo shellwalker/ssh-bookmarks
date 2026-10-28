@@ -13,12 +13,21 @@ struct SSHBookmarksApp: App {
     @Environment(\.openWindow) private var openWindow
     @StateObject private var hostStore: HostStoreModel
     @StateObject private var settings: SettingsStore
+    @StateObject private var tunnels: TunnelController
 
     init() {
         // The same singletons AppDelegate uses. Initializing the wrapper here keeps
         // the lookup on the main actor; a default-value expression is nonisolated.
         _hostStore = StateObject(wrappedValue: HostStoreModel.shared)
         _settings = StateObject(wrappedValue: SettingsStore.shared)
+        _tunnels = StateObject(wrappedValue: TunnelController.shared)
+    }
+
+    private var menuBarLabel: String {
+        if settings.showTunnelCount, tunnels.runningCount > 0 {
+            return L10n.format("%lld tunnels running", Int64(tunnels.runningCount))
+        }
+        return "SSH Bookmarks"
     }
 
     var body: some Scene {
@@ -26,9 +35,16 @@ struct SSHBookmarksApp: App {
             MenuBarContentView()
                 .environmentObject(hostStore)
                 .environmentObject(settings)
+                .environmentObject(tunnels)
         } label: {
-            Image(systemName: "terminal")
-                .help("SSH Bookmarks")
+            HStack(spacing: 2) {
+                Image(systemName: "terminal")
+                if settings.showTunnelCount, tunnels.runningCount > 0 {
+                    Text(verbatim: "\(tunnels.runningCount)")
+                }
+            }
+            .help("SSH Bookmarks")
+            .accessibilityLabel(menuBarLabel)
         }
         .menuBarExtraStyle(.window)
 
@@ -82,10 +98,12 @@ struct SSHBookmarksUITestApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
     @StateObject private var hostStore: HostStoreModel
     @StateObject private var settings: SettingsStore
+    @StateObject private var tunnels: TunnelController
 
     init() {
         _hostStore = StateObject(wrappedValue: HostStoreModel.shared)
         _settings = StateObject(wrappedValue: SettingsStore.shared)
+        _tunnels = StateObject(wrappedValue: TunnelController.shared)
     }
 
     var body: some Scene {
@@ -93,6 +111,7 @@ struct SSHBookmarksUITestApp: App {
             MenuBarContentView()
                 .environmentObject(hostStore)
                 .environmentObject(settings)
+                .environmentObject(tunnels)
         }
         .defaultSize(width: 380, height: 520)
 

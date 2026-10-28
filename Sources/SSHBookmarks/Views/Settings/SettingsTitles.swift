@@ -63,6 +63,7 @@ extension SettingsPaneID {
         case .general: return "General"
         case .terminal: return "Terminal"
         case .hosts: return "Hosts"
+        case .diagnostics: return "Diagnostics"
         case .about: return "About"
         }
     }
@@ -72,6 +73,7 @@ extension SettingsPaneID {
         case .general: return "gearshape"
         case .terminal: return "terminal"
         case .hosts: return "server.rack"
+        case .diagnostics: return "stethoscope"
         case .about: return "info.circle"
         }
     }
@@ -86,6 +88,7 @@ extension SettingsItemID {
         case .launchAtLogin: return "Launch at Login"
         case .dockIcon: return "Show in Dock"
         case .closePanelAfterConnect: return "Close Panel After Connecting"
+        case .showTunnelCount: return "Show Tunnel Count in the Menu Bar"
         case .sessionTerminal: return "Session Terminal"
         case .openMode: return "Open In"
         case .sshPath: return "SSH Executable"
@@ -94,6 +97,10 @@ extension SettingsItemID {
         case .dataFile: return "Data File"
         case .sync: return "Sync"
         case .syncFolder: return "Sync Folder"
+        case .diagnosticFile: return "Write Diagnostic Log"
+        case .diagnosticRedactNames: return "Redact Hostnames and Usernames"
+        case .diagnosticExport: return "Export Diagnostic Log…"
+        case .diagnosticCopy: return "Copy Diagnostic Info"
         case .version: return "Version"
         case .sourceCode: return "Source Code"
         }
@@ -107,6 +114,7 @@ extension SettingsItemID {
         case .launchAtLogin: return "Start SSH Bookmarks automatically when you log in"
         case .dockIcon: return "\"Follow Window\" shows the Dock icon only while a window is open"
         case .closePanelAfterConnect: return "Hide the menu bar panel once a session opens"
+        case .showTunnelCount: return "Show the number of running tunnels on the menu bar icon"
         case .sessionTerminal: return "Terminal used to open SSH sessions"
         case .openMode: return "Open each session in a new window or a new tab"
         case .sshPath: return "Default: /usr/bin/ssh"
@@ -117,6 +125,10 @@ extension SettingsItemID {
         case .dataFile: return "Hosts are stored as JSON; passwords live in the Keychain"
         case .sync: return "Sync is off. Hosts stay on this Mac."
         case .syncFolder: return "Default: iCloud Drive/MenuSSH"
+        case .diagnosticFile: return "The log stays on this Mac and is off until you turn it on"
+        case .diagnosticRedactNames: return "On by default. Passwords and tokens are always removed"
+        case .diagnosticExport: return "Save a ZIP that never includes passwords, tokens, or private keys"
+        case .diagnosticCopy: return "Copy a short redacted summary to the clipboard"
         case .version, .sourceCode: return nil
         }
     }

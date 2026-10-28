@@ -278,8 +278,15 @@ final class HostStoreModel: ObservableObject {
 
     func connect(_ host: SSHHost, settings: SettingsStore) {
         let launcher = TerminalLauncher(sshPath: settings.sshPath, terminal: settings.terminal, openMode: settings.openMode)
+        let launching = SSHCommandBuilder.omittingRunningTunnels(host, runningForwardIDs: TunnelController.shared.runningForwardIDs)
         do {
-            let notice = try launcher.launch(host)
+            let notice = try launcher.launch(launching)
+            DiagnosticLog.connect(
+                host: host,
+                terminal: settings.terminal.rawValue,
+                askpass: host.authMethod == .password,
+                fallback: notice?.used.rawValue
+            )
             lastError = nil
             var h = host
             h.lastConnectedAt = Date()

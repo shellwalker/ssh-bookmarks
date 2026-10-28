@@ -650,6 +650,8 @@ private struct PortForwardEditor: View {
     @State private var listenPort: String
     @State private var destinationHost: String
     @State private var destinationPort: String
+    @State private var quickToggle: Bool
+    @State private var reconnect: Bool
     @State private var error: String?
     private let originalID: UUID
     private let onSave: (PortForward) -> Void
@@ -660,6 +662,8 @@ private struct PortForwardEditor: View {
         _listenPort = State(initialValue: String(forward.listenPort))
         _destinationHost = State(initialValue: forward.destinationHost ?? "")
         _destinationPort = State(initialValue: forward.destinationPort.map(String.init) ?? "")
+        _quickToggle = State(initialValue: forward.quickToggle)
+        _reconnect = State(initialValue: forward.reconnect)
         originalID = forward.id
         self.onSave = onSave
     }
@@ -687,6 +691,12 @@ private struct PortForwardEditor: View {
                         TextField("Destination Port", text: $destinationPort, prompt: Text(verbatim: "80"))
                             .accessibilityIdentifier(UITestID.forwardDestinationPort)
                     }
+                    if kind == .local {
+                        Toggle("Show in the menu bar", isOn: $quickToggle)
+                            .accessibilityIdentifier(UITestID.editorQuickTunnel)
+                        Toggle("Reconnect if the tunnel drops", isOn: $reconnect)
+                            .accessibilityIdentifier(UITestID.editorReconnect)
+                    }
                 }
             }
             .formStyle(.grouped)
@@ -707,7 +717,7 @@ private struct PortForwardEditor: View {
             }
             .padding(12)
         }
-        .frame(width: 420, height: 320)
+        .frame(width: 420, height: 440)
     }
 
     private func save() {
@@ -721,7 +731,9 @@ private struct PortForwardEditor: View {
             bindAddress: bind.isEmpty ? nil : bind,
             listenPort: listen,
             destinationHost: kind == .dynamic || destHost.isEmpty ? nil : destHost,
-            destinationPort: kind == .dynamic ? nil : destPort
+            destinationPort: kind == .dynamic ? nil : destPort,
+            quickToggle: kind == .local && quickToggle,
+            reconnect: kind == .local && quickToggle && reconnect
         )
         let probe = SSHHost(label: "probe", hostname: "example.com", portForwards: [forward])
         do {

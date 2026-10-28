@@ -149,6 +149,8 @@ public enum ProductEnvironment {
     public static let screenshotDirectoryLegacy = "MENUSH_SCREENSHOT_DIR"
     public static let integration = "SSHBOOKMARKS_INTEGRATION"
     public static let integrationLegacy = "MENUSH_INTEGRATION"
+    public static let fakeTunnelFailure = "SSHBOOKMARKS_FAKE_TUNNEL_FAILURE"
+    public static let fakeTunnelFailureLegacy = "MENUSH_FAKE_TUNNEL_FAILURE"
 
     public static func sshValue(_ name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
         EnvironmentAlias.string(primary: "SSHBOOKMARKS_SSH_\(name)", legacy: "MENUSH_SSH_\(name)", environment: environment)

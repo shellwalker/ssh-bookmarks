@@ -18,7 +18,10 @@ CI 在 `macos-14` arm64 runner 上分三个 job 并行跑。任一失败都会�
 - 编辑表单：跳板（从已有主机填入）、启动命令、ForwardAgent、`-o` 额外选项、本地端口转发的增改，保存后的 JSON，以及假终端日志里的 argv。动态转发不显示目标主机和端口。保存按钮在接近生产高度（站点窗口约 920×580，表单滚动、按钮钉在底部）时可点。
 - 空站点面板：导入 `~/.ssh/config`（报告导入条数、跳过的重复项，并说明连接用别名、HostName 进备注）和新建站点。密钥选择器列出带 `.pub` 的私钥。
 - 删除站点前有确认框；取消编辑未保存的修改前也会确认。
-- 设置窗口四个分页都会打开。
+- 设置窗口分页都会打开，包括「诊断」和「关于」。关于页显示版本、构建号和口号。
+- 快捷隧道：测试模式拨动面板开关后出现数量；端口被占用时显示冲突；`MENUSH_FAKE_TUNNEL_FAILURE=hostKey` 显示主机密钥错误和「在终端中打开一次以信任」。不启动真 ssh。
+- 端到端：`tunnelArguments` 对临时 sshd 做 `-L`，先 `ssh-keyscan` 写入 known_hosts（生产 argv 强制 `StrictHostKeyChecking=yes`，不能靠 `no` 绕过），curl 读到约定字节，停止后进程和本地端口都消失。
+- 诊断脱敏、ZIP 不含秘密、schema v3 仍能读 v2，在 `Round3CoreTests`。
 - 浅色 / 深色、英文 / 简体中文的全屏截图，作为 artifact `ui-screenshots`。索引在 artifact 里的 `index.md`，也会写进该 job 的 Summary，并更新 PR 评论。**不做像素比对**，避免时钟、字体抗锯齿和动画让 CI 误红。
 - 公钥登录、askpass 密码登录、`-J` 两个 sshd、`-L` / `-R` / `-D`、启动命令经 pty 送到远端 shell、`ForwardAgent`、带 `Include` 的 config 解析后按字段连上。
 - 同步文件 schema 1 读入、与更新的记录合并后写成 schema 2，且编码结果里没有 `password` 等禁止键。备注里出现 “password” 这个词不算泄密。

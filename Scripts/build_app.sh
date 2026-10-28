@@ -63,6 +63,12 @@ if [[ -z "${BUILD_NUMBER:-}" ]]; then
 fi
 "$PLIST_BUDDY" -c "Set :CFBundleShortVersionString $VERSION" "$APP/Contents/Info.plist"
 "$PLIST_BUDDY" -c "Set :CFBundleVersion $BUILD_NUMBER" "$APP/Contents/Info.plist"
+CHANNEL="${SSHBOOKMARKS_CHANNEL:-development}"
+if "$PLIST_BUDDY" -c "Set :SSHBookmarksChannel $CHANNEL" "$APP/Contents/Info.plist" 2>/dev/null; then
+  :
+else
+  "$PLIST_BUDDY" -c "Add :SSHBookmarksChannel string $CHANNEL" "$APP/Contents/Info.plist"
+fi
 plutil -lint "$APP/Contents/Info.plist"
 for strings in "$APP"/Contents/Resources/*.lproj/*.strings; do
   plutil -lint "$strings"

@@ -5,6 +5,7 @@ public enum SettingsPaneID: String, CaseIterable, Identifiable, Sendable {
     case general
     case terminal
     case hosts
+    case diagnostics
     case about
     public var id: String { rawValue }
 }
@@ -17,6 +18,7 @@ public enum SettingsItemID: String, CaseIterable, Identifiable, Sendable {
     case launchAtLogin
     case dockIcon
     case closePanelAfterConnect
+    case showTunnelCount
     // 终端
     case sessionTerminal
     case openMode
@@ -27,6 +29,11 @@ public enum SettingsItemID: String, CaseIterable, Identifiable, Sendable {
     case dataFile
     case sync
     case syncFolder
+    // 诊断
+    case diagnosticFile
+    case diagnosticRedactNames
+    case diagnosticExport
+    case diagnosticCopy
     // 关于
     case version
     case sourceCode
@@ -55,6 +62,9 @@ public enum SettingsCatalog {
             id: .closePanelAfterConnect, pane: .general, group: 1,
             keywords: ["close", "panel", "connect", "dismiss", "关闭", "面板", "连接后"]),
         SettingsItem(
+            id: .showTunnelCount, pane: .general, group: 1,
+            keywords: ["tunnel", "badge", "menu bar", "count", "隧道", "角标", "菜单栏", "数量"]),
+        SettingsItem(
             id: .sessionTerminal, pane: .terminal, group: 0,
             keywords: ["terminal", "iterm", "iterm2", "ghostty", "session", "终端", "会话"]),
         SettingsItem(id: .openMode, pane: .terminal, group: 0, keywords: ["window", "tab", "open", "窗口", "标签页", "打开方式"]),
@@ -74,6 +84,18 @@ public enum SettingsCatalog {
         SettingsItem(
             id: .syncFolder, pane: .hosts, group: 1,
             keywords: ["sync", "folder", "icloud", "dropbox", "同步", "文件夹", "目录"]),
+        SettingsItem(
+            id: .diagnosticFile, pane: .diagnostics, group: 0,
+            keywords: ["log", "diagnostic", "file", "诊断", "日志", "本地"]),
+        SettingsItem(
+            id: .diagnosticRedactNames, pane: .diagnostics, group: 0,
+            keywords: ["redact", "hostname", "username", "打码", "主机名", "用户名"]),
+        SettingsItem(
+            id: .diagnosticExport, pane: .diagnostics, group: 1,
+            keywords: ["export", "zip", "diagnostic", "导出", "排查", "压缩"]),
+        SettingsItem(
+            id: .diagnosticCopy, pane: .diagnostics, group: 1,
+            keywords: ["copy", "clipboard", "diagnostic", "复制", "诊断信息"]),
         SettingsItem(id: .version, pane: .about, group: 0, keywords: ["version", "about", "update", "版本", "关于"]),
         SettingsItem(id: .sourceCode, pane: .about, group: 0, keywords: ["source", "github", "code", "源码", "源代码"]),
     ]

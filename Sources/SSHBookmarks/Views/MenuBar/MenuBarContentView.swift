@@ -9,6 +9,7 @@ import SwiftUI
 struct MenuBarContentView: View {
     @EnvironmentObject private var hosts: HostStoreModel
     @EnvironmentObject private var settings: SettingsStore
+    @EnvironmentObject private var tunnels: TunnelController
     @Environment(\.openWindow) private var openWindow
     @Environment(\.dismiss) private var dismiss
     @StateObject private var keyMonitor = PanelKeyMonitor()
@@ -19,6 +20,7 @@ struct MenuBarContentView: View {
     var body: some View {
         let sections = hosts.sections(matching: query)
         VStack(spacing: 0) {
+            tunnelHeader
             searchField
                 .padding(10)
 
@@ -58,6 +60,94 @@ struct MenuBarContentView: View {
         .onChange(of: hosts.library) { _, _ in
             cursor.update(sections: hosts.sections(matching: query))
         }
+    }
+
+    private var tunnelHeader: some View {
+        let running = tunnels.sessions.values.filter { $0.phase == .running || $0.phase == .starting }
+        return Group {
+            if settings.showTunnelCount, tunnels.runningCount > 0 {
+                HStack {
+                    Text("Running tunnels")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(.secondary)
+                    Spacer()
+                    Text(verbatim: "\(tunnels.runningCount)")
+                        .font(.system(size: 12, weight: .semibold))
+                        .accessibilityIdentifier(UITestID.panelTunnelBadge)
+                }
+                .padding(.horizontal, 14)
+                .padding(.top, 8)
+                ForEach(running.sorted { $0.label < $1.label }) { session in
+                    HStack {
+                        Text(verbatim: "\(session.label) \(session.displayAddress)")
+                            .font(.system(size: 12))
+                            .lineLimit(1)
+                        Spacer()
+                        Button("Stop") { stop(session) }
+                            .font(.system(size: 11))
+                            .accessibilityIdentifier(UITestID.tunnelStop(session.label, session.listenPort))
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 2)
+                }
+                Divider()
+            }
+        }
+    }
+
+    private func tunnelRows(_ host: SSHHost) -> some View {
+        let forwards = host.portForwards.filter { $0.quickToggle && $0.kind == .local }
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(forwards) { forward in
+                let session = tunnels.session(for: forward.id)
+                HStack(spacing: 8) {
+                    Toggle(
+                        isOn: Binding(
+                            get: { session?.phase == .running || session?.phase == .starting },
+                            set: { _ in tunnels.toggle(host: host, forward: forward) }
+                        )
+                    ) {
+                        Text(verbatim: forward.editorSummary)
+                            .font(.system(size: 11, design: .monospaced))
+                    }
+                    .toggleStyle(.switch)
+                    .accessibilityIdentifier(UITestID.tunnelToggle(host.label, forward.listenPort))
+                    .accessibilityLabel(Text(verbatim: "\(host.label) \(forward.listenPort)"))
+                    if session?.phase == .failed(.hostKeyNew) || session?.phase == .failed(.hostKeyChanged) {
+                        Button("Open in Terminal to Trust") { tunnels.trustInTerminal(host: host, settings: settings) }
+                            .font(.system(size: 11))
+                            .accessibilityIdentifier(UITestID.tunnelTrust(host.label))
+                    }
+                }
+                .padding(.horizontal, 16)
+                if let message = session?.message, !message.isEmpty {
+                    Text(verbatim: message)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.orange)
+                        .padding(.horizontal, 16)
+                        .accessibilityIdentifier(UITestID.tunnelMessage(host.label))
+                }
+            }
+        }
+    }
+
+    private func stop(_ session: TunnelSession) {
+        let owner = self.host(session.hostID) ?? SSHHost(label: session.label, hostname: session.hostname)
+        let rule = forward(session) ?? placeholder(session)
+        tunnels.toggle(host: owner, forward: rule)
+    }
+
+    private func host(_ id: UUID) -> SSHHost? { hosts.host(id: id) }
+
+    private func forward(_ session: TunnelSession) -> PortForward? {
+        hosts.host(id: session.hostID)?.portForwards.first { $0.id == session.id }
+    }
+
+    private func placeholder(_ session: TunnelSession) -> PortForward {
+        PortForward(
+            id: session.id, kind: .local, listenPort: session.listenPort,
+            destinationHost: "127.0.0.1", destinationPort: 1, quickToggle: true
+        )
     }
 
     // MARK: Search
@@ -100,12 +190,15 @@ struct MenuBarContentView: View {
                             .padding(.bottom, 4)
                         ForEach(section.hosts) { host in
                             let entryID = HostListEntry(sectionID: section.id, host: host).id
-                            MenuHostButton(
-                                host: host,
-                                isSelected: cursor.selectedID == entryID,
-                                action: { connect(host) }
-                            )
-                            .id(entryID)
+                            VStack(alignment: .leading, spacing: 0) {
+                                MenuHostButton(
+                                    host: host,
+                                    isSelected: cursor.selectedID == entryID,
+                                    action: { connect(host) }
+                                )
+                                .id(entryID)
+                                tunnelRows(host)
+                            }
                         }
                     }
                 }

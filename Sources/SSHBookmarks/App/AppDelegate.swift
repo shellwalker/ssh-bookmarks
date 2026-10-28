@@ -54,6 +54,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         window.setFrame(frame, display: true)
     }
 
+    func applicationWillTerminate(_ notification: Notification) {
+        TunnelController.shared.stopAll()
+    }
+
     /// 菜单栏应用：关闭最后一个窗口不退出。
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         false
