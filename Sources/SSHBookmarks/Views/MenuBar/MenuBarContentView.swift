@@ -31,7 +31,7 @@ struct MenuBarContentView: View {
                     .frame(height: 300)
             } else {
                 hostList(sections)
-                    .frame(height: 320)
+                    .frame(height: 400)
             }
 
             if let error = hosts.lastError {
