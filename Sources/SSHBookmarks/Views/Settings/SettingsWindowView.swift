@@ -164,9 +164,9 @@ private struct DiagnosticsPage: View {
                         .padding(.top, 10)
                     SettingsItemRow(id: .diagnosticFile, showsDivider: true)
                     SettingsItemRow(id: .diagnosticRedactNames, showsDivider: true)
-                    infoRow("Retention", value: "7 days")
-                    infoRow("Size Limit", value: "About 10 MiB · up to 5 files")
-                    infoRow("Current Log", value: currentSummary)
+                    infoRow("Retention", value: Text("7 days"))
+                    infoRow("Size Limit", value: Text("About 10 MiB · up to 5 files"))
+                    infoRow("Current Log", value: Text(verbatim: currentSummary))
                     Text(verbatim: DiagnosticLog.logDirectory().path)
                         .font(.system(size: 11))
                         .foregroundStyle(.secondary)
@@ -230,11 +230,11 @@ private struct DiagnosticsPage: View {
         return "\(files.count) files · \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))"
     }
 
-    private func infoRow(_ title: LocalizedStringKey, value: LocalizedStringKey) -> some View {
+    private func infoRow(_ title: LocalizedStringKey, value: Text) -> some View {
         HStack {
             Text(title).font(.system(size: 13, weight: .medium))
             Spacer()
-            Text(value).font(.system(size: 12)).foregroundStyle(.secondary)
+            value.font(.system(size: 12)).foregroundStyle(.secondary)
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 4)
