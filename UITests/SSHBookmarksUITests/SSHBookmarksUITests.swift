@@ -1,3 +1,4 @@
+import Darwin
 import XCTest
 
 /// 通过测试模式窗口驱动正式界面。菜单栏 MenuBarExtra 在 CI 里点不开，面板视图改由普通窗口承载。
@@ -125,7 +126,7 @@ final class SSHBookmarksUITests: XCTestCase {
         XCTAssertEqual(log["startup"] as? String, "echo ci-started")
 
         openSettings(app)
-        for pane in ["general", "terminal", "hosts", "about"] {
+        for pane in ["general", "terminal", "hosts", "diagnostics", "about"] {
             marked(app, "settings.pane.\(pane)").click()
             shot(marked(app, id.settings), "settings-\(pane)-en-light", screen: pane, appearance: "light", language: "en")
         }
@@ -211,13 +212,62 @@ final class SSHBookmarksUITests: XCTestCase {
             shot(marked(app, id.editorHost), "editor-\(tag)", screen: "editor", appearance: appearance, language: language)
             marked(app, id.editorCancel).click()
             openSettings(app)
-            for pane in ["general", "terminal", "hosts", "about"] {
+            for pane in ["general", "terminal", "hosts", "diagnostics", "about"] {
                 marked(app, "settings.pane.\(pane)").click()
                 shot(
                     marked(app, id.settings), "settings-\(pane)-\(tag)", screen: pane, appearance: appearance, language: language)
             }
             app.terminate()
         }
+    }
+
+    func testQuickTunnelBadgeConflictAndHostKey() throws {
+        let en = try launch(language: "en", appearance: "light")
+        let toggle = marked(en.app, "tunnel.toggle.API.15432")
+        XCTAssertTrue(toggle.waitForExistence(timeout: 8))
+        toggle.click()
+        let badge = marked(en.app, "panel.tunnelBadge")
+        XCTAssertTrue(badge.waitForExistence(timeout: 5))
+        shot(marked(en.app, id.panel), "panel-tunnels-en-light", screen: "panel", appearance: "light", language: "en")
+        marked(en.app, id.panelManage).click()
+        let hosts = marked(en.app, id.hosts)
+        XCTAssertTrue(hosts.waitForExistence(timeout: 10))
+        let api = marked(hosts, "host.API")
+        api.click()
+        api.rightClick()
+        chooseMenu(en.app, identifier: id.hostEdit, titles: ["Edit…"])
+        XCTAssertTrue(marked(en.app, id.editorHost).waitForExistence(timeout: 8))
+        en.app.buttons["Edit…"].firstMatch.click()
+        XCTAssertTrue(marked(en.app, "editor.quickTunnel").waitForExistence(timeout: 5))
+        shot(marked(en.app, "editor.quickTunnel"), "editor-tunnel-en-light", screen: "editor", appearance: "light", language: "en")
+        en.app.terminate()
+
+        let zhLight = try launch(language: "zh-Hans", appearance: "light")
+        marked(zhLight.app, "tunnel.toggle.API.15432").click()
+        XCTAssertTrue(marked(zhLight.app, "panel.tunnelBadge").waitForExistence(timeout: 5))
+        shot(marked(zhLight.app, id.panel), "panel-tunnels-zh-light", screen: "panel", appearance: "light", language: "zh-Hans")
+        zhLight.app.terminate()
+
+        let zhDark = try launch(language: "zh-Hans", appearance: "dark")
+        marked(zhDark.app, "tunnel.toggle.API.15432").click()
+        XCTAssertTrue(marked(zhDark.app, "panel.tunnelBadge").waitForExistence(timeout: 5))
+        shot(marked(zhDark.app, id.panel), "panel-tunnels-zh-dark", screen: "panel", appearance: "dark", language: "zh-Hans")
+        zhDark.app.terminate()
+
+        let held = try holdLocalPort(15432)
+        let conflict = try launch(language: "en", appearance: "light")
+        marked(conflict.app, "tunnel.toggle.API.15432").click()
+        let conflictMessage = marked(conflict.app, "tunnel.message.API")
+        XCTAssertTrue(conflictMessage.waitForExistence(timeout: 5))
+        shot(marked(conflict.app, id.panel), "tunnel-conflict-en-light", screen: "panel", appearance: "light", language: "en")
+        conflict.app.terminate()
+        close(held)
+
+        let hostKey = try launch(language: "en", appearance: "light", extraEnvironment: ["MENUSH_FAKE_TUNNEL_FAILURE": "hostKey"])
+        marked(hostKey.app, "tunnel.toggle.API.15432").click()
+        XCTAssertTrue(marked(hostKey.app, "tunnel.trust.API").waitForExistence(timeout: 5))
+        shot(marked(hostKey.app, id.panel), "tunnel-hostkey-en-light", screen: "panel", appearance: "light", language: "en")
+        hostKey.app.terminate()
     }
 
     // MARK: - Launch
@@ -228,7 +278,9 @@ final class SSHBookmarksUITests: XCTestCase {
         var logURL: URL
     }
 
-    private func launch(language: String, appearance: String, hostsJSON: String? = nil, sshDir: URL? = nil) throws -> Context {
+    private func launch(
+        language: String, appearance: String, hostsJSON: String? = nil, sshDir: URL? = nil, extraEnvironment: [String: String] = [:]
+    ) throws -> Context {
         let dataDir = URL(fileURLWithPath: NSTemporaryDirectory()).appendingPathComponent("menush-ui-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dataDir, withIntermediateDirectories: true)
         try (hostsJSON ?? fixtureJSON()).write(to: dataDir.appendingPathComponent("hosts.json"), atomically: true, encoding: .utf8)
@@ -252,6 +304,9 @@ final class SSHBookmarksUITests: XCTestCase {
         if let sshDir {
             app.launchEnvironment["MENUSH_SSH_DIR"] = sshDir.path
         }
+        for (key, value) in extraEnvironment {
+            app.launchEnvironment[key] = value
+        }
         app.launch()
         XCTAssertTrue(marked(app, id.panel).waitForExistence(timeout: 20))
         return Context(app: app, dataDir: dataDir, logURL: logURL)
@@ -262,6 +317,23 @@ final class SSHBookmarksUITests: XCTestCase {
         let window = app.windows.containing(.any, identifier: identifier).firstMatch
         XCTAssertTrue(window.waitForExistence(timeout: 3))
         window.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.01)).click()
+    }
+
+    private func holdLocalPort(_ port: Int) throws -> Int32 {
+        let fd = socket(AF_INET, SOCK_STREAM, 0)
+        XCTAssertGreaterThanOrEqual(fd, 0)
+        var address = sockaddr_in()
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_port = UInt16(port).bigEndian
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let bound = withUnsafePointer(to: &address) {
+            $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
+                bind(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size))
+            }
+        }
+        XCTAssertEqual(bound, 0, "could not hold port \(port)")
+        _ = listen(fd, 1)
+        return fd
     }
 
     private func openSettings(_ app: XCUIApplication) {
@@ -578,7 +650,10 @@ final class SSHBookmarksUITests: XCTestCase {
           "hosts": [
             {"id": "33333333-3333-3333-3333-333333333333", "label": "API",
              "hostname": "api.example", "username": "deploy", "groupID": "\(production)",
-             "authMethod": "automatic", "isFavorite": true, "lastConnectedAt": "2026-01-02T00:00:00Z"},
+             "authMethod": "automatic", "isFavorite": true, "lastConnectedAt": "2026-01-02T00:00:00Z",
+             "portForwards": [{"id": "66666666-6666-6666-6666-666666666666", "kind": "local",
+               "listenPort": 15432, "destinationHost": "127.0.0.1", "destinationPort": 5432,
+               "quickToggle": true, "reconnect": false}]},
             {"id": "44444444-4444-4444-4444-444444444444", "label": "Leaf",
              "hostname": "leaf.example", "username": "deploy",
              "groupID": "22222222-2222-2222-2222-222222222222", "authMethod": "automatic"},
