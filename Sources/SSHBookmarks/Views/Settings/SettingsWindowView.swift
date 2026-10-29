@@ -227,7 +227,8 @@ private struct DiagnosticsPage: View {
     private var currentSummary: String {
         let files = DiagnosticLog.snapshots()
         let bytes = files.reduce(0) { $0 + $1.byteCount }
-        return "\(files.count) files · \(ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file))"
+        let size = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+        return L10n.format("%lld files · %@", Int64(files.count), size)
     }
 
     private func infoRow(_ title: LocalizedStringKey, value: Text) -> some View {

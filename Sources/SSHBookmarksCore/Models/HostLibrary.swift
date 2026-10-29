@@ -86,7 +86,7 @@ public extension HostLibrary {
         }
     }
 
-    /// 生成分区：收藏（仅在无搜索词时单独显示）→ 各分组（按 sortOrder、名称）→ 未分组。
+    /// 生成分区：最近 → 各分组（按 sortOrder、名称）→ 未分组。收藏不单独成区。
     func sections(matching query: String) -> [HostSection] {
         let matched = hosts(matching: query)
         let byLabel: (SSHHost, SSHHost) -> Bool = {
@@ -95,25 +95,23 @@ public extension HostLibrary {
         var result: [HostSection] = []
 
         let isSearching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        if !isSearching {
-            let recent = recentHosts(limit: HostLibrary.recentSectionLimit)
-            if !recent.isEmpty { result.append(HostSection(kind: .recent, hosts: recent)) }
-            let favorites = matched.filter(\.isFavorite).sorted(by: byLabel)
-            if !favorites.isEmpty { result.append(HostSection(kind: .favorites, hosts: favorites)) }
-        }
+        let recent = isSearching ? [] : recentHosts(limit: HostLibrary.recentSectionLimit)
+        if !recent.isEmpty { result.append(HostSection(kind: .recent, hosts: recent)) }
+        // 收藏只在所在行上显示星号。已经出现在「最近」里的收藏不再进分组，避免同一条站点画两次。
+        let favoriteAlreadyShown = Set(recent.filter(\.isFavorite).map(\.id))
 
         let knownGroupIDs = Set(groups.map(\.id))
         let sortedGroups = groups.sorted {
             ($0.sortOrder, $0.name.lowercased()) < ($1.sortOrder, $1.name.lowercased())
         }
         for group in sortedGroups {
-            let members = matched.filter { $0.groupID == group.id }.sorted(by: byLabel)
+            let members = matched.filter { $0.groupID == group.id && !favoriteAlreadyShown.contains($0.id) }.sorted(by: byLabel)
             if !members.isEmpty { result.append(HostSection(kind: .group(group), hosts: members)) }
         }
 
         let ungrouped =
             matched
-            .filter { $0.groupID == nil || !knownGroupIDs.contains($0.groupID!) }
+            .filter { ($0.groupID == nil || !knownGroupIDs.contains($0.groupID!)) && !favoriteAlreadyShown.contains($0.id) }
             .sorted(by: byLabel)
         if !ungrouped.isEmpty { result.append(HostSection(kind: .ungrouped, hosts: ungrouped)) }
         return result

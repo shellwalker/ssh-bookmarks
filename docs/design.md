@@ -96,7 +96,7 @@ argv 按以下顺序拼出：
 - 偏好：第一次启动从旧域 `com.shellwalker.MenuSSH` 抄一份允许列表里的键（外观、语言、终端、同步开关和文件夹、设备 id 等）。新域里已有的键不覆盖，抄完写标记，之后不再抄。
 - 钥匙串：新 service 是 `com.shellwalker.SSHBookmarks`。读取时若新 service 没有、旧 service `com.shellwalker.MenuSSH` 有，就把密码写回新 service 并删掉旧条目。密码不进日志。
 - 诊断日志目录是 Application Support 里的 `Logs/`，跟着上面的文件夹一起搬。
-- iCloud 同步目录仍是 `~/Library/Mobile Documents/com~apple~CloudDocs/MenuSSH/`。还在旧构建上的设备只认这个名字，改名会把它们留在原地。
+- iCloud 同步目录是 `~/Library/Mobile Documents/com~apple~CloudDocs/SSH Bookmarks/`。若旧的 `MenuSSH` 目录还在、新目录不在，首次启动用文件协调器把它搬过来。
 - `SSHHost` 字段：id、label、hostname、port?、username、groupID?、tags、authMethod（automatic / publicKey / password）、identityFile?、jumpHost?、portForwards[]、extraOptions[]、isFavorite、notes、lastConnectedAt、createdAt、updatedAt。
 - 机密信息：Keychain generic password。
   - `service` 为 bundle id（`com.shellwalker.SSHBookmarks`），`account` 为 `host.<uuid>.password`。没有私钥口令保险库，不再使用 `passphrase` 账户。`accessible` 为 WhenUnlockedThisDeviceOnly，且不同步。旧 service `com.shellwalker.MenuSSH` 只在读取时回退。

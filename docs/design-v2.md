@@ -15,7 +15,7 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 | 方案 | 要什么账号 | 未沙盒时的权限 | 容量与冲突 | 结论 |
 | --- | --- | --- | --- | --- |
 | CloudKit | Apple Developer Program、iCloud 容器、描述文件。未沙盒也要 entitlement | `com.apple.developer.icloud-services`、容器 id | 按记录冲突（`serverRecordChanged`），适合按 host id 合并 | 有开发者账号后再做。现在不做前置 |
-| iCloud Drive 上的一个文件 | 用户登录了 iCloud 即可 | 不需要额外 entitlement。路径在 `~/Library/Mobile Documents/com~apple~CloudDocs/` 下，例如 `MenuSSH/menu-ssh-sync.json` | 整文件同步。两边同时写会变成「文件 2」副本 | 个人使用的推荐路径 |
+| iCloud Drive 上的一个文件 | 用户登录了 iCloud 即可 | 不需要额外 entitlement。路径在 `~/Library/Mobile Documents/com~apple~CloudDocs/` 下，例如 `SSH Bookmarks/menu-ssh-sync.json` | 整文件同步。两边同时写会变成「文件 2」副本 | 个人使用的推荐路径 |
 | `NSUbiquitousKeyValueStore` | 同样要开发者账号和 `com.apple.developer.ubiquity-kvstore-identifier` | 键值存储，上限约 1MB，不适合当站点主库 | 不采用 |
 
 推荐先把同步文件放在 iCloud Drive（或用户选的任意文件夹，见 B4）。CloudKit 留到有开发者账号、并且需要按字段合并的时候。iCloud Drive 没有记录级冲突 API，必须自己合并。读写已经包在 `NSFileCoordinator` 里（协调读、`.forReplacing` 协调写）。`NSFileVersion` 上未解决的冲突版本会先并进主文件，再标成已解决。Linux 上的核心测试不经过协调器，直接读写同一套合并结果。没有长期驻留的 file presenter。
@@ -80,7 +80,7 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 
 ## 已拍板（本分支实现）
 
-1. 同步文件夹默认是 iCloud Drive 的 `MenuSSH`/（`~/Library/Mobile Documents/com~apple~CloudDocs/MenuSSH/menu-ssh-sync.json`）。设置里可以改成任意文件夹。产品改名为 SSH Bookmarks 之后这个目录名不变：还在旧构建上的 Mac 只读 `MenuSSH`，改名会拆成两份同步文件。
+1. 同步文件夹默认是 iCloud Drive 的 `SSH Bookmarks`/（`~/Library/Mobile Documents/com~apple~CloudDocs/SSH Bookmarks/menu-ssh-sync.json`）。设置里可以改成任意文件夹。若还留着旧的 `MenuSSH` 目录且新目录不存在，首次启动会把它搬过来。
 2. 墓碑保留 90 天，过期后不再压制站点。
 3. 终端回退不写回已保存的偏好，只影响这一次会话。
 4. 时间戳能分出先后时静默合并，留下 `updatedAt` 较新的一边。只有时间戳相同且内容不同（或“还在 / 已删”打成平局）才算冲突。平局时 `updatedByDeviceId` 字典序更大的一边留下。提示会写明这两条规则。

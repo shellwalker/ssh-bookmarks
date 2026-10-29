@@ -1,5 +1,49 @@
 import Foundation
 
+/// 诊断打码用的主机名和用户名：站点本身，加上跳板规格里的每一跳，以及这些跳板若也是已保存站点时的下一条链。
+public enum DiagnosticNames {
+    public static func collect(from hosts: [SSHHost]) -> (hostnames: [String], usernames: [String]) {
+        var hostnames: [String] = []
+        var usernames: [String] = []
+        var seen = Set<UUID>()
+
+        func addHost(_ name: String) {
+            let trimmed = name.trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
+            if trimmed.count >= 2, !hostnames.contains(trimmed) { hostnames.append(trimmed) }
+        }
+
+        func addUser(_ name: String) {
+            let trimmed = name.trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
+            if trimmed.count >= 2, !usernames.contains(trimmed) { usernames.append(trimmed) }
+        }
+
+        func walk(_ host: SSHHost) {
+            if !seen.insert(host.id).inserted { return }
+            addHost(host.hostname)
+            addUser(host.username)
+            for hop in HostSafeguards.hopHosts(host.jumpHost) {
+                addHost(hop)
+                let next = hosts.filter { $0.hostname.compare(hop, options: .caseInsensitive) == .orderedSame }
+                next.forEach(walk)
+            }
+            for user in jumpUsers(host.jumpHost) { addUser(user) }
+        }
+
+        hosts.forEach(walk)
+        return (hostnames, usernames)
+    }
+
+    static func jumpUsers(_ jump: String?) -> [String] {
+        guard let jump else { return [] }
+        return jump.split(separator: ",", omittingEmptySubsequences: false).compactMap { hop in
+            let text = hop.trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
+            guard let at = text.lastIndex(of: "@") else { return nil }
+            let user = text[..<at].trimmingCharacters(in: SSHCommandBuilder.plainSpaces)
+            return user.isEmpty ? nil : String(user)
+        }
+    }
+}
+
 /// 写入诊断文件和导出包之前的脱敏。密码、令牌和私钥永远去掉。主机名和用户名默认打码。
 public struct DiagnosticRedactor: Equatable, Sendable {
     public var redactNames: Bool

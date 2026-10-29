@@ -92,7 +92,7 @@ final class SettingsStore: ObservableObject {
         didSet { defaults.set(syncEnabled, forKey: Keys.syncEnabled) }
     }
 
-    /// nil 表示用 iCloud Drive/MenuSSH。用户可以改成任意文件夹。
+    /// nil 表示用 iCloud Drive/SSH Bookmarks。用户可以改成任意文件夹。
     @Published var syncFolderPath: String? {
         didSet {
             if let syncFolderPath, !syncFolderPath.isEmpty {

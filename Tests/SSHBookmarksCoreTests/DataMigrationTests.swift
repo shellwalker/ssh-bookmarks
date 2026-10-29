@@ -75,11 +75,22 @@ final class DataMigrationTests: XCTestCase {
         XCTAssertEqual(ProductIdentity.legacyKeychainService, "com.shellwalker.MenuSSH")
     }
 
-    func testICloudFolderStaysOnTheLegacyName() {
+    func testICloudFolderUsesTheNewNameAndMovesTheLegacyFolderOnce() throws {
         let url = SyncPaths.iCloudDirectory(home: "/Users/a")
-        XCTAssertTrue(url.path.hasSuffix("/MenuSSH"))
-        XCTAssertFalse(url.path.contains("SSH Bookmarks"))
-        XCTAssertEqual(ProductIdentity.iCloudDirectoryName, "MenuSSH")
+        XCTAssertTrue(url.path.hasSuffix("/SSH Bookmarks"))
+        XCTAssertFalse(url.path.hasSuffix("/MenuSSH"))
+        XCTAssertEqual(ProductIdentity.iCloudDirectoryName, "SSH Bookmarks")
+        let root = FileManager.default.temporaryDirectory.appendingPathComponent("icloud-\(UUID().uuidString)", isDirectory: true)
+        let home = root.appendingPathComponent("home", isDirectory: true)
+        let legacy = ICloudDirectoryMigration.directory(home: home.path, folderName: "MenuSSH")
+        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
+        try Data("sync".utf8).write(to: legacy.appendingPathComponent("menu-ssh-sync.json"))
+        XCTAssertEqual(try ICloudDirectoryMigration.migrate(home: home.path), .moved)
+        let current = ICloudDirectoryMigration.directory(home: home.path, folderName: "SSH Bookmarks")
+        XCTAssertEqual(try String(contentsOf: current.appendingPathComponent("menu-ssh-sync.json")), "sync")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: legacy.path))
+        try FileManager.default.createDirectory(at: legacy, withIntermediateDirectories: true)
+        XCTAssertEqual(try ICloudDirectoryMigration.migrate(home: home.path), .alreadyPresent)
         XCTAssertEqual(
             ProductPaths.legacyLogsDirectory(applicationSupport: URL(fileURLWithPath: "/tmp")).lastPathComponent,
             "Logs"

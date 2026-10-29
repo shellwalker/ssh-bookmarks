@@ -20,4 +20,4 @@
 - 文件默认关。路径是 `~/Library/Application Support/SSH Bookmarks/Logs/`。保留 7 天，合计约 10 MiB，最多 5 个文件。目录 0700，文件 0600。
 - 密码、令牌、askpass 路径和私钥始终打码。主机名和用户名默认打码。
 - 设置里「诊断」在「关于」之前。关于页有版本（开发版 / 正式版）、构建号和口号「菜单栏里的 SSH 书签」/ “SSH bookmarks in your menu bar.”。侧栏底部也有这句口号。
-- 导出 ZIP 先脱敏再打包。iCloud 同步目录仍叫 `MenuSSH`，避免旧版本设备失联。
+- 导出 ZIP 先脱敏再打包。iCloud 同步目录是 `SSH Bookmarks`。旧的 `MenuSSH` 目录在首次启动时搬过来。

@@ -430,14 +430,33 @@ private struct SyncFolderRow: View {
     }
 
     var body: some View {
-        row(.syncFolder, subtitle: Text(verbatim: settings.resolvedSyncDirectory.path), showsDivider: showsDivider) {
-            HStack(spacing: 8) {
-                Button("Use iCloud Drive") {
-                    guard settings.syncFolderPath != nil else { return }
-                    folderConfirm = .iCloud
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Sync Folder").font(.system(size: 13, weight: .medium))
+                    Text(syncFolderTitle)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(verbatim: settings.resolvedSyncDirectory.path)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityIdentifier("settings.syncPath")
                 }
-                Button("Choose Folder…") { folderConfirm = .choose }
+                Spacer(minLength: 12)
+                HStack(spacing: 8) {
+                    Button("Use iCloud Drive") {
+                        guard settings.syncFolderPath != nil else { return }
+                        folderConfirm = .iCloud
+                    }
+                    Button("Choose Folder…") { folderConfirm = .choose }
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            if showsDivider { Divider().padding(.leading, 14) }
         }
         .alert(
             "Change the sync folder?",
@@ -448,6 +467,14 @@ private struct SyncFolderRow: View {
         } message: {
             Text(LocalizedStringKey(syncFolderChangeWarning))
         }
+    }
+
+    private var syncFolderTitle: Text {
+        if settings.syncFolderPath == nil {
+            return Text("iCloud Drive/SSH Bookmarks")
+        }
+        let name = settings.resolvedSyncDirectory.lastPathComponent
+        return Text(verbatim: name)
     }
 
     private func applyFolderChange() {
