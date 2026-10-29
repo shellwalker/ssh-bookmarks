@@ -1,41 +1,41 @@
 // swift-tools-version: 5.9
 //
-// MenuSSH 使用纯 SwiftPM 构建：
-// - MenuSSHCore：只依赖 Foundation 的核心逻辑（模型、ssh 命令构建、终端启动计划、存储、ssh_config 解析），
+// SSH Bookmarks 使用纯 SwiftPM 构建：
+// - SSHBookmarksCore：只依赖 Foundation 的核心逻辑（模型、ssh 命令构建、终端启动计划、存储、ssh_config 解析），
 //   可在 Linux 上编译和测试。
-// - MenuSSH：SwiftUI/AppKit 菜单栏应用，仅在 macOS 上声明。
-// - .app 由 Scripts/build_app.sh 打包（Info.plist、本地化资源、签名）。
+// - SSHBookmarks：SwiftUI/AppKit 菜单栏应用，仅在 macOS 上声明。产物名没有空格；
+//   .app 显示名是 “SSH Bookmarks”，由 Scripts/build_app.sh 打包。
 import PackageDescription
 
 var products: [Product] = [
-    .library(name: "MenuSSHCore", targets: ["MenuSSHCore"])
+    .library(name: "SSHBookmarksCore", targets: ["SSHBookmarksCore"])
 ]
 
 var targets: [Target] = [
     .target(
-        name: "MenuSSHCore",
-        path: "Sources/MenuSSHCore"
+        name: "SSHBookmarksCore",
+        path: "Sources/SSHBookmarksCore"
     ),
     .testTarget(
-        name: "MenuSSHCoreTests",
-        dependencies: ["MenuSSHCore"],
-        path: "Tests/MenuSSHCoreTests"
+        name: "SSHBookmarksCoreTests",
+        dependencies: ["SSHBookmarksCore"],
+        path: "Tests/SSHBookmarksCoreTests"
     ),
 ]
 
 #if os(macOS)
-    products.append(.executable(name: "MenuSSH", targets: ["MenuSSH"]))
+    products.append(.executable(name: "SSHBookmarks", targets: ["SSHBookmarks"]))
     targets.append(
         .executableTarget(
-            name: "MenuSSH",
-            dependencies: ["MenuSSHCore"],
-            path: "Sources/MenuSSH"
+            name: "SSHBookmarks",
+            dependencies: ["SSHBookmarksCore"],
+            path: "Sources/SSHBookmarks"
         )
     )
 #endif
 
 let package = Package(
-    name: "MenuSSH",
+    name: "SSHBookmarks",
     platforms: [
         .macOS(.v14)
     ],

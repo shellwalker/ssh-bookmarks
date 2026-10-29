@@ -50,7 +50,7 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 - 文案：「未安装 %@，已改在 %@ 中打开本次会话。」菜单栏面板和站点窗口用橙色信息行显示。有提示时不自动关闭面板。
 - 自动化被拒绝（-1743）时，错误里的名字是真正拿去执行脚本的那个终端。
 
-单测在 `MenuSSHCore`：`TerminalLaunchPlannerTests`（除 Ghostty 外版本不影响路径）、`TerminalFallbackTests`（已安装则保持、缺 Ghostty 且有 iTerm 则用 iTerm、缺 iTerm 且有 Ghostty 则用 Ghostty、都没有则 Terminal 并提示、首选 Terminal 即使安装集合为空也不提示）。
+单测在 `SSHBookmarksCore`：`TerminalLaunchPlannerTests`（除 Ghostty 外版本不影响路径）、`TerminalFallbackTests`（已安装则保持、缺 Ghostty 且有 iTerm 则用 iTerm、缺 iTerm 且有 Ghostty 则用 Ghostty、都没有则 Terminal 并提示、首选 Terminal 即使安装集合为空也不提示）。
 
 ## B4 便携同步文件与本机凭据（已按下面的默认实现）
 
@@ -80,7 +80,7 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 
 ## 已拍板（本分支实现）
 
-1. 同步文件夹默认是 iCloud Drive 的 `MenuSSH/`（`~/Library/Mobile Documents/com~apple~CloudDocs/MenuSSH/menu-ssh-sync.json`）。设置里可以改成任意文件夹。
+1. 同步文件夹默认是 iCloud Drive 的 `MenuSSH`/（`~/Library/Mobile Documents/com~apple~CloudDocs/MenuSSH/menu-ssh-sync.json`）。设置里可以改成任意文件夹。产品改名为 SSH Bookmarks 之后这个目录名不变：还在旧构建上的 Mac 只读 `MenuSSH`，改名会拆成两份同步文件。
 2. 墓碑保留 90 天，过期后不再压制站点。
 3. 终端回退不写回已保存的偏好，只影响这一次会话。
 4. 时间戳能分出先后时静默合并，留下 `updatedAt` 较新的一边。只有时间戳相同且内容不同（或“还在 / 已删”打成平局）才算冲突。平局时 `updatedByDeviceId` 字典序更大的一边留下。提示会写明这两条规则。
@@ -89,7 +89,7 @@ B3（终端回退）以及下面「已拍板」的同步和凭据已经写进代
 
 同步默认关闭。打开时用对话框写明：文件里的主机名和用户名是明文，秘密只留在本机钥匙串。
 
-密码存在钥匙串，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`，且 `synchronizable = false`。连接时发一个 60 秒、单次有效的令牌（环境变量 `MENUSH_ASKPASS_TOKEN`），并设置 `SSH_ASKPASS_REQUIRE=force`。没有这个令牌，或提示语不是密码，askpass 进程不读钥匙串。不记录密码。
+密码存在钥匙串，`kSecAttrAccessibleWhenUnlockedThisDeviceOnly`，且 `synchronizable = false`。连接时发一个 60 秒、单次有效的令牌（环境变量 `SSHBOOKMARKS_ASKPASS_TOKEN`，旧名 `MENUSH_ASKPASS_TOKEN` 仍接受），并设置 `SSH_ASKPASS_REQUIRE=force`。没有这个令牌，或提示语不是密码，askpass 进程不读钥匙串。不记录密码。从 MenuSSH 升级后，第一次成功读取会把旧 service 的密码写到 `com.shellwalker.SSHBookmarks` 并删掉旧条目。
 
 `ssh-copy-id` 只在用户确认后，于用户自己的终端里运行，不在后台执行。没有公钥时只展示 `ssh-keygen -t ed25519`，不代跑。
 

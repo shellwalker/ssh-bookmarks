@@ -15,11 +15,13 @@ concurrency:
   group: build-${{ github.ref }}
   cancel-in-progress: true
 
+# 原先拆成三个并行 job。一台 macos-14 被占用时，排在队列里的 job 大约 15 分钟后会被取消，
+# 而且不会开始任何步骤。合成一个 job 后，分到的那一台跑完 lint、单测、打包、sshd 和界面测试。
 jobs:
-  build:
-    name: Build & test (macOS 14, arm64)
+  verify:
+    name: Build, test, and UI (macOS 14, arm64)
     runs-on: macos-14
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -51,6 +53,8 @@ jobs:
       - name: Build app
         env:
           ARCH: arm64
+          BUILD_NUMBER: ${{ github.run_number }}
+          SSHBOOKMARKS_CHANNEL: development
         run: Scripts/build_app.sh
 
       - name: Package
@@ -61,29 +65,41 @@ jobs:
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MenuSSH-${{ github.sha }}-arm64
+          name: SSH-Bookmarks-${{ github.sha }}-arm64
           path: dist/
           if-no-files-found: error
           retention-days: 14
 
-  ui:
-    name: UI automation and screenshots
-    runs-on: macos-14
-    timeout-minutes: 25
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - name: Start temporary sshd
+        run: Scripts/ci_sshd_fixture.sh start
 
-      - name: Select Xcode
+      - name: Integration tests
         run: |
-          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode_16*.app' | sort -V | tail -n 1)"
-          if [[ -n "$XCODE" ]]; then
-            sudo xcode-select -s "$XCODE"
-          fi
-          xcodebuild -version
-          uname -m
+          set -a
+          # shellcheck disable=SC1091
+          source build/sshd-fixture.env
+          set +a
+          swift test --filter Integration --no-parallel
+
+      - name: Stop temporary sshd
+        if: always()
+        run: Scripts/ci_sshd_fixture.sh stop
+
+      - name: Upload sshd logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sshd-logs
+          path: |
+            /tmp/menush-ci-sshd/*.log
+            /tmp/menush-ci-sshd/*.conf
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: UI tests
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          SSHBOOKMARKS_CHANNEL: development
         run: Scripts/ci_ui_tests.sh
 
       - name: Screenshot summary
@@ -142,48 +158,5 @@ jobs:
           path: |
             build/ui-results.xcresult
             build/ui-derived/Logs
-          if-no-files-found: ignore
-          retention-days: 7
-
-  e2e:
-    name: SSH and sync end-to-end
-    runs-on: macos-14
-    timeout-minutes: 20
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Select Xcode
-        run: |
-          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode_16*.app' | sort -V | tail -n 1)"
-          if [[ -n "$XCODE" ]]; then
-            sudo xcode-select -s "$XCODE"
-          fi
-          swift --version
-          uname -m
-
-      - name: Start temporary sshd
-        run: Scripts/ci_sshd_fixture.sh start
-
-      - name: Integration tests
-        run: |
-          set -a
-          # shellcheck disable=SC1091
-          source build/sshd-fixture.env
-          set +a
-          swift test --filter Integration --no-parallel
-
-      - name: Stop temporary sshd
-        if: always()
-        run: Scripts/ci_sshd_fixture.sh stop
-
-      - name: Upload sshd logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: sshd-logs
-          path: |
-            /tmp/menush-ci-sshd/*.log
-            /tmp/menush-ci-sshd/*.conf
           if-no-files-found: ignore
           retention-days: 7

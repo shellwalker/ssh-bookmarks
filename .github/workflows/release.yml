@@ -84,6 +84,8 @@ jobs:
       - name: Build app
         env:
           ARCH: arm64
+          BUILD_NUMBER: ${{ github.run_number }}
+          SSHBOOKMARKS_CHANNEL: release
           SIGN_IDENTITY: ${{ env.HAS_SIGNING_CERT == 'true' && secrets.MACOS_SIGN_IDENTITY || '' }}
         run: |
           VERSION="${GITHUB_REF_NAME#v}" Scripts/build_app.sh
@@ -108,12 +110,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          FLAGS=(--generate-notes --verify-tag --title "MenuSSH $GITHUB_REF_NAME")
+          FLAGS=(--generate-notes --verify-tag --title "SSH Bookmarks $GITHUB_REF_NAME")
           if [[ "$GITHUB_REF_NAME" == *-* ]]; then
             FLAGS+=(--prerelease)
           fi
           if [[ "$HAS_SIGNING_CERT" != "true" ]]; then
-            FLAGS+=(--notes "未签名构建（ad-hoc）：首次打开请右键 › 打开，或执行 xattr -dr com.apple.quarantine /Applications/MenuSSH.app")
+            FLAGS+=(--notes "未签名构建（ad-hoc）：首次打开请右键 › 打开，或执行 xattr -dr com.apple.quarantine /Applications/SSH Bookmarks.app")
           fi
           gh release create "$GITHUB_REF_NAME" dist/* "${FLAGS[@]}"
 

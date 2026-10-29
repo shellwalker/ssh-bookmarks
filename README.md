@@ -1,8 +1,10 @@
-# MenuSSH
+# SSH Bookmarks
+
+菜单栏里的 SSH 书签
 
 macOS 菜单栏上的 SSH 站点管理器。点击菜单栏图标可以搜索并选择站点，选中后在你自己的终端（Terminal、iTerm2 或 Ghostty）里打开 `ssh`。
 
-仓库：<https://github.com/shellwalker/ssh-menu>
+仓库：<https://github.com/shellwalker/ssh-bookmarks>
 
 > 状态：**M0 骨架**。核心库（模型、命令构建、转义、ssh config 解析、存储）已实现并有单元测试；界面还在骨架阶段，尚未在真机上验证。
 
@@ -12,7 +14,7 @@ macOS 菜单栏上的 SSH 站点管理器。点击菜单栏图标可以搜索并
 - 站点管理窗口（风格参考 Termius）：分组、标签、收藏，可编辑 host、user、port、私钥和跳板机
 - 支持 Terminal.app、iTerm2 和 Ghostty，可选新窗口或新标签页
 - 设置窗口（风格参考 magpie）：外观、语言（跟随系统 / 简体中文 / English）、开机自启、Dock 图标（隐藏 / 跟随窗口 / 显示）、会话终端
-- 密码和私钥口令保存在系统钥匙串，站点数据以 JSON 保存在 `~/Library/Application Support/MenuSSH/`
+- 密码和私钥口令保存在系统钥匙串，站点数据以 JSON 保存在 `~/Library/Application Support/SSH Bookmarks/`
 - 可导入 `~/.ssh/config`
 
 ## 系统要求
@@ -24,9 +26,9 @@ macOS 菜单栏上的 SSH 站点管理器。点击菜单栏图标可以搜索并
 
 ```bash
 swift test                 # 运行核心库测试（Linux 上也能跑；本机 sshd / UI 见 docs/testing.md）
-Scripts/build_app.sh       # 产出 build/MenuSSH.app（默认 ad-hoc 签名）
-Scripts/package.sh         # 产出 dist/MenuSSH-<版本>-arm64.zip
-open build/MenuSSH.app
+Scripts/build_app.sh       # 产出 build/SSH Bookmarks.app（默认 ad-hoc 签名）
+Scripts/package.sh         # 产出 dist/SSH-Bookmarks-<版本>-arm64.zip
+open build/SSH Bookmarks.app
 ```
 
 如有 Developer ID 证书，可以这样签名：
@@ -37,15 +39,15 @@ SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" Scripts/build_app.s
 
 ### 首次运行
 
-- 未签名或 ad-hoc 签名的版本：在 Finder 中右键点击应用，选择“打开”；或者执行 `xattr -dr com.apple.quarantine /Applications/MenuSSH.app`。
-- 第一次连接时，系统会询问是否允许 MenuSSH 控制 Terminal / iTerm2 / Ghostty，请点“好”。如果之前拒绝过，可以到“系统设置 › 隐私与安全性 › 自动化”中开启。
+- 未签名或 ad-hoc 签名的版本：在 Finder 中右键点击应用，选择“打开”；或者执行 `xattr -dr com.apple.quarantine /Applications/SSH Bookmarks.app`。
+- 第一次连接时，系统会询问是否允许 SSH Bookmarks 控制 Terminal / iTerm2 / Ghostty，请点“好”。如果之前拒绝过，可以到“系统设置 › 隐私与安全性 › 自动化”中开启。
 
 ## 目录结构
 
 ```
-Sources/MenuSSHCore/    纯 Foundation 核心库（可在 Linux 测试）
-Sources/MenuSSH/        macOS 应用（SwiftUI + AppKit）
-Tests/MenuSSHCoreTests/ 单元测试
+Sources/SSHBookmarksCore/    纯 Foundation 核心库（可在 Linux 测试）
+Sources/SSHBookmarks/       macOS 应用（SwiftUI + AppKit）
+Tests/SSHBookmarksCoreTests/ 单元测试
 Resources/              Info.plist、entitlements、本地化文件
 Scripts/                构建、打包、公证脚本
 docs/                   调研（research.md）与技术方案（design.md）

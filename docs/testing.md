@@ -1,14 +1,14 @@
 # 自动化测试
 
-CI 在 `macos-14` arm64 runner 上分三个 job 并行跑。任一失败都会让整次工作流变红，没有 `continue-on-error`。
+CI 在一台 `macos-14` arm64 runner 上按顺序跑完。排队中的并行 job 曾在大约 15 分钟后被取消，所以现在合成一个 job。任一失败都会让整次工作流变红，没有 `continue-on-error`。
 
-| Job | 做什么 |
+| 阶段 | 做什么 |
 | --- | --- |
 | Build & test | `swift-format`、`swift test`（核心库）、`Scripts/build_app.sh`、打包 zip |
-| UI automation and screenshots | 启动测试模式的 `.app`，用 XCUITest 走主路径，并截全屏 |
 | SSH and sync end-to-end | 本机两个临时 sshd，加上同步文件 schema 检查 |
+| UI automation and screenshots | 启动测试模式的 `.app`，用 XCUITest 走主路径，并截全屏 |
 
-触发条件与原来的构建一样：推送到 `develop` / `main`，或向这两个分支提 PR。发布工作流 `release.yml` 在打包之前也会跑同一套 sshd 集成测试（`MENUSH_INTEGRATION=1`）。界面测试仍只在 PR / `develop` 的 `build.yml` 里跑。
+触发条件与原来的构建一样：推送到 `develop` / `main`，或向这两个分支提 PR。发布工作流 `release.yml` 在打包之前也会跑同一套 sshd 集成测试（`SSHBOOKMARKS_INTEGRATION=1`，旧名 `MENUSH_INTEGRATION` 仍有效）。界面测试仍只在 PR / `develop` 的 `build.yml` 里跑。
 
 ## CI 已经覆盖
 
@@ -18,17 +18,21 @@ CI 在 `macos-14` arm64 runner 上分三个 job 并行跑。任一失败都会�
 - 编辑表单：跳板（从已有主机填入）、启动命令、ForwardAgent、`-o` 额外选项、本地端口转发的增改，保存后的 JSON，以及假终端日志里的 argv。动态转发不显示目标主机和端口。保存按钮在接近生产高度（站点窗口约 920×580，表单滚动、按钮钉在底部）时可点。
 - 空站点面板：导入 `~/.ssh/config`（报告导入条数、跳过的重复项，并说明连接用别名、HostName 进备注）和新建站点。密钥选择器列出带 `.pub` 的私钥。
 - 删除站点前有确认框；取消编辑未保存的修改前也会确认。
-- 设置窗口四个分页都会打开。
+- 设置窗口分页都会打开，包括「诊断」和「关于」。关于页显示版本、构建号和口号。
+- 快捷隧道：测试模式拨动面板开关后出现数量；端口被占用时显示冲突；`MENUSH_FAKE_TUNNEL_FAILURE=hostKey` 显示主机密钥错误和「在终端中打开一次以信任」。不启动真 ssh。
+- 端到端：`tunnelArguments` 对临时 sshd 做 `-L`，先 `ssh-keyscan` 写入 known_hosts（生产 argv 强制 `StrictHostKeyChecking=yes`，不能靠 `no` 绕过），curl 读到约定字节，停止后进程和本地端口都消失。
+- 诊断脱敏、ZIP 不含秘密、schema v3 仍能读 v2，在 `Round3CoreTests`。
 - 浅色 / 深色、英文 / 简体中文的全屏截图，作为 artifact `ui-screenshots`。索引在 artifact 里的 `index.md`，也会写进该 job 的 Summary，并更新 PR 评论。**不做像素比对**，避免时钟、字体抗锯齿和动画让 CI 误红。
 - 公钥登录、askpass 密码登录、`-J` 两个 sshd、`-L` / `-R` / `-D`、启动命令经 pty 送到远端 shell、`ForwardAgent`、带 `Include` 的 config 解析后按字段连上。
 - 同步文件 schema 1 读入、与更新的记录合并后写成 schema 2，且编码结果里没有 `password` 等禁止键。备注里出现 “password” 这个词不算泄密。
 
-测试模式只在 `MENUSH_UI_TEST=1`（或 `--ui-test`）时生效：
+测试模式只在 `SSHBOOKMARKS_UI_TEST=1`（或 `--ui-test`）时生效。旧名 `MENUSH_UI_TEST` 以及下面每个 `MENUSH_*` 仍作为别名。
 
-- `MENUSH_DATA_DIR` 指向独立目录，不碰 `~/Library/Application Support/MenuSSH`。
-- 使用单独的 UserDefaults，并强制关闭同步、面板在连接后不关、Dock 图标保持显示。
-- `MENUSH_APPEARANCE=light|dark` 固定外观。语言用启动参数 `-AppleLanguages`。
-- `MENUSH_FAKE_TERMINAL_LOG` 把将要执行的 argv 和启动命令写成一行 JSON，不跑 AppleScript、不打开 Terminal。
+- `SSHBOOKMARKS_DATA_DIR`（别名 `MENUSH_DATA_DIR`）指向独立目录，不碰 `~/Library/Application Support/SSH Bookmarks`，也不把用户的 `MenuSSH` 目录改名。
+- 使用单独的 UserDefaults，并强制关闭同步、面板在连接后不关、Dock 图标保持显示。不从 `com.shellwalker.MenuSSH` 抄偏好。
+- `SSHBOOKMARKS_APPEARANCE=light|dark`（别名 `MENUSH_APPEARANCE`）固定外观。语言用启动参数 `-AppleLanguages`。
+- `SSHBOOKMARKS_FAKE_TERMINAL_LOG`（别名 `MENUSH_FAKE_TERMINAL_LOG`）把将要执行的 argv 和启动命令写成一行 JSON，不跑 AppleScript、不打开 Terminal。
+- 升级迁移（Application Support 改名、UserDefaults 抄写、钥匙串 service 选择、iCloud 目录名保持 `MenuSSH`）在 `DataMigrationTests` 里用临时目录和临时 suite 覆盖。日志在 Application Support 的 `Logs/`，跟着文件夹一起搬。
 - 站点窗口保持接近生产尺寸（宽不超过 960、高不超过 580），不再为了测试把窗口拉满屏幕。编辑表单自己滚动，保存栏始终露在外面。面板窗口仍靠右，高度不变。
 
 没有这些变量时，正式行为不变。
@@ -39,7 +43,7 @@ GitHub runner 上点按 `MenuBarExtra` 不稳定，也不该依赖辅助功能�
 
 ## 编辑时的防护
 
-这些判断在 `MenuSSHCore` 有单测；确认框本身在 macOS 界面上。
+这些判断在 `SSHBookmarksCore` 有单测；确认框本身在 macOS 界面上。
 
 | 操作 | 行为 |
 | --- | --- |
@@ -104,7 +108,7 @@ Scripts/ci_ui_tests.sh
 ```bash
 Scripts/build_app.sh
 mkdir -p /tmp/menush-preview
-MENUSH_UI_TEST=1 MENUSH_DATA_DIR=/tmp/menush-preview \
-  MENUSH_APPEARANCE=light MENUSH_FAKE_TERMINAL_LOG=/tmp/menush-preview/terminal.log \
-  open build/MenuSSH.app
+SSHBOOKMARKS_UI_TEST=1 SSHBOOKMARKS_DATA_DIR=/tmp/menush-preview \
+  SSHBOOKMARKS_APPEARANCE=light SSHBOOKMARKS_FAKE_TERMINAL_LOG=/tmp/menush-preview/terminal.log \
+  open build/SSH Bookmarks.app
 ```
