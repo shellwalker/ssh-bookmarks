@@ -168,6 +168,9 @@ enum UITestID {
     static func tunnelStop(_ label: String, _ port: Int) -> String { "tunnel.stop.\(label).\(port)" }
     static func tunnelTrust(_ label: String) -> String { "tunnel.trust.\(label)" }
     static func tunnelMessage(_ label: String) -> String { "tunnel.message.\(label)" }
+    static func tunnelCopy(_ label: String, _ port: Int) -> String { "tunnel.copy.\(label).\(port)" }
+    static func hostGroup(_ label: String) -> String { "host.group.\(label)" }
+    static let tunnelConfirm = "tunnel.confirm"
 
     static func host(_ label: String) -> String { "host.\(label)" }
     static func group(_ name: String) -> String { "group.\(name)" }

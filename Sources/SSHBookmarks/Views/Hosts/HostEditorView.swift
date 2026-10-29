@@ -751,6 +751,20 @@ private struct PortForwardEditor: View {
 }
 
 extension PortForward {
+    /// 面板上的人话：本机端口 → 目标。
+    var panelRoute: String {
+        let target: String
+        if let destinationHost, let destinationPort {
+            target = "\(destinationHost):\(destinationPort)"
+        } else if let destinationHost {
+            target = destinationHost
+        } else {
+            target = ""
+        }
+        if target.isEmpty { return "\(listenPort)" }
+        return "\(listenPort) → \(target)"
+    }
+
     var editorSummary: String {
         let bind = bindAddress.map { "\($0):" } ?? ""
         switch kind {

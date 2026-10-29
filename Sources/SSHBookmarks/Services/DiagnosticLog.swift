@@ -20,7 +20,7 @@ enum DiagnosticLog {
         AppLog.ssh.info("connect terminal=\(terminal, privacy: .public) askpass=\(askpass, privacy: .public)")
         AppLog.ssh.info("connect host=\(host.hostname, privacy: .private) user=\(host.username, privacy: .private)")
         let line = "connect terminal=\(terminal) askpass=\(askpass) fallback=\(used) host=\(host.hostname) user=\(host.username)"
-        write(line, namesFrom: [host])
+        write(line, namesFrom: namesIncludingLibrary([host]))
     }
 
     static func tunnel(event: String, port: Int, kind: String, exitCode: Int32?, detail: String, hosts: [SSHHost]) {
@@ -28,7 +28,7 @@ enum DiagnosticLog {
         AppLog.tunnel.info("tunnel \(event, privacy: .public) port=\(port, privacy: .public)")
         AppLog.tunnel.info("tunnel kind=\(kind, privacy: .public) exit=\(code, privacy: .public)")
         let tail = String(detail.prefix(500))
-        write("tunnel event=\(event) port=\(port) kind=\(kind) exit=\(code) \(tail)", namesFrom: hosts)
+        write("tunnel event=\(event) port=\(port) kind=\(kind) exit=\(code) \(tail)", namesFrom: namesIncludingLibrary(hosts))
     }
 
     static func askpassIssued() {
@@ -41,13 +41,22 @@ enum DiagnosticLog {
         write("sync failed \(message)", namesFrom: [])
     }
 
+    static func namesIncludingLibrary(_ hosts: [SSHHost]) -> [SSHHost] {
+        var combined = HostStoreModel.shared.library.hosts
+        for host in hosts where !combined.contains(where: { $0.id == host.id }) {
+            combined.append(host)
+        }
+        return combined
+    }
+
     static func write(_ line: String, namesFrom hosts: [SSHHost]) {
         guard SettingsStore.shared.diagnosticLogEnabled else { return }
         guard !UITestLaunch.isEnabled else { return }
+        let names = DiagnosticNames.collect(from: hosts)
         let redactor = DiagnosticRedactor(
             redactNames: SettingsStore.shared.diagnosticRedactNames,
-            hostnames: hosts.map(\.hostname),
-            usernames: hosts.map(\.username)
+            hostnames: names.hostnames,
+            usernames: names.usernames
         )
         let stamped = "\(isoNow()) \(redactor.redact(line))"
         do {

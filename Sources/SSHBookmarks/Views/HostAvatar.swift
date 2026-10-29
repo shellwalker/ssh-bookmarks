@@ -48,6 +48,13 @@ struct HostRow: View {
                     .lineLimit(1)
             }
             Spacer(minLength: 4)
+            if let groupName, !groupName.isEmpty {
+                Text(verbatim: groupName)
+                    .font(.system(size: 11))
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                    .accessibilityIdentifier(UITestID.hostGroup(host.label))
+            }
             if !host.tags.isEmpty {
                 Text(verbatim: host.tags.prefix(2).joined(separator: ", "))
                     .font(.system(size: 10))
@@ -64,6 +71,7 @@ struct HostRow: View {
         var parts = [host.label]
         if !host.subtitle.isEmpty { parts.append(host.subtitle) }
         if host.isFavorite { parts.append(String(localized: "Favorite")) }
+        if let groupName, !groupName.isEmpty { parts.append(groupName) }
         return parts.joined(separator: ", ")
     }
 }

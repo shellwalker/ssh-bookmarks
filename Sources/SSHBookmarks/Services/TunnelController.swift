@@ -26,6 +26,46 @@ enum TunnelLaunchError: Error {
     case missingPassword
 }
 
+enum TunnelStartWarning: Equatable {
+    case privileged(Int)
+    case nonLoopback(String)
+}
+
+struct TunnelStartPrompt: Identifiable, Equatable {
+    var id: UUID { forward.id }
+    var host: SSHHost
+    var forward: PortForward
+    var warning: TunnelStartWarning
+
+    static func make(host: SSHHost, forward: PortForward) -> TunnelStartPrompt? {
+        if (1..<1024).contains(forward.listenPort) {
+            return TunnelStartPrompt(host: host, forward: forward, warning: .privileged(forward.listenPort))
+        }
+        if let bind = forward.bindAddress?.trimmingCharacters(in: .whitespaces), !bind.isEmpty, !TunnelAddress.isLoopback(bind) {
+            return TunnelStartPrompt(host: host, forward: forward, warning: .nonLoopback(bind))
+        }
+        return nil
+    }
+
+    var title: String {
+        switch warning {
+        case .privileged(let port):
+            return L10n.format("Listen on privileged port %lld?", Int64(port))
+        case .nonLoopback:
+            return String(localized: "Listen beyond this Mac?")
+        }
+    }
+
+    var message: String {
+        switch warning {
+        case .privileged:
+            return String(localized: "macOS may refuse ports below 1024.")
+        case .nonLoopback(let address):
+            return L10n.format("Connections to %@ will be accepted from the network, not only from this Mac.", address)
+        }
+    }
+}
+
 enum TunnelAddress {
     static func isLoopback(_ value: String) -> Bool {
         let folded = value.lowercased()
@@ -39,8 +79,10 @@ final class TunnelController: ObservableObject {
     static let shared = TunnelController()
 
     @Published private(set) var sessions: [UUID: TunnelSession] = [:]
+    @Published var pendingPrompt: TunnelStartPrompt?
     private var stderrTail: [UUID: String] = [:]
     private var readers: [UUID: FileHandle] = [:]
+    private var launchGeneration: [UUID: Int] = [:]
 
     var runningCount: Int {
         sessions.values.filter { $0.phase == .running || $0.phase == .starting }.count
@@ -63,7 +105,17 @@ final class TunnelController: ObservableObject {
             stop(forward.id, userInitiated: true)
             return
         }
-        start(host: host, forward: forward)
+        start(host: host, forward: forward, inheritedFailures: 0, manual: true, acknowledged: false)
+    }
+
+    func acknowledgePrompt() {
+        guard let prompt = pendingPrompt else { return }
+        pendingPrompt = nil
+        start(host: prompt.host, forward: prompt.forward, inheritedFailures: 0, manual: true, acknowledged: true)
+    }
+
+    func cancelPrompt() {
+        pendingPrompt = nil
     }
 
     func stopAll() {
@@ -74,8 +126,14 @@ final class TunnelController: ObservableObject {
         HostStoreModel.shared.connect(host, settings: settings)
     }
 
-    private func start(host: SSHHost, forward: PortForward) {
+    private func start(
+        host: SSHHost, forward: PortForward, inheritedFailures: Int, manual: Bool, acknowledged: Bool
+    ) {
         guard forward.kind == .local, forward.quickToggle else { return }
+        if !acknowledged, let prompt = TunnelStartPrompt.make(host: host, forward: forward) {
+            pendingPrompt = prompt
+            return
+        }
         let running = sessions.values.filter { $0.phase == .running || $0.phase == .starting }.count
         let busy = !LocalPortProbe.isFree(host: forward.bindAddress ?? "127.0.0.1", port: forward.listenPort)
             || TunnelPortConflict.clashes(listenPort: forward.listenPort, with: otherPorts(except: forward.id))
@@ -83,7 +141,9 @@ final class TunnelController: ObservableObject {
         var session = TunnelSession(
             id: forward.id, hostID: host.id, label: host.label, hostname: host.hostname,
             listenPort: forward.listenPort, bindAddress: forward.bindAddress, phase: step.phase,
-            message: "", failures: 0, pid: nil, startedAt: nil, sshPath: "", reconnect: forward.reconnect
+            message: "",
+            failures: manual ? TunnelFailureAccounting.afterManualStart() : TunnelFailureAccounting.carriedIntoRetry(inheritedFailures),
+            pid: nil, startedAt: nil, sshPath: "", reconnect: forward.reconnect
         )
         if !step.spawn {
             session.message = message(for: step.phase, port: forward.listenPort)
@@ -117,6 +177,7 @@ final class TunnelController: ObservableObject {
             remember(session)
             watch(child.stderr, forwardID: forward.id, host: host)
             watchExit(pid: child.pid, forwardID: forward.id, host: host)
+            scheduleStableReset(forwardID: forward.id, pid: child.pid)
             DiagnosticLog.tunnel(event: "start", port: forward.listenPort, kind: "local", exitCode: nil, detail: "", hosts: [host])
         } catch TunnelLaunchError.missingPassword {
             session.phase = .failed(.authentication)
@@ -199,7 +260,19 @@ final class TunnelController: ObservableObject {
         guard let forward else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
             guard self?.sessions[forwardID]?.phase == .starting else { return }
-            self?.start(host: host, forward: forward)
+            self?.start(
+                host: host, forward: forward, inheritedFailures: step.failures, manual: false, acknowledged: true)
+        }
+    }
+
+    private func scheduleStableReset(forwardID: UUID, pid: pid_t) {
+        launchGeneration[forwardID, default: 0] += 1
+        let generation = launchGeneration[forwardID, default: 0]
+        DispatchQueue.main.asyncAfter(deadline: .now() + TunnelFailureAccounting.stableUptime) { [weak self] in
+            guard let self, self.launchGeneration[forwardID] == generation else { return }
+            guard var session = self.sessions[forwardID], session.phase == .running, session.pid == pid else { return }
+            session.failures = TunnelFailureAccounting.afterUptime(TunnelFailureAccounting.stableUptime, current: session.failures)
+            self.sessions[forwardID] = session
         }
     }
 

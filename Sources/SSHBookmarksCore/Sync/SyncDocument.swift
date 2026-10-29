@@ -93,9 +93,7 @@ public struct SyncDocument: Codable, Equatable, Sendable {
 }
 
 public enum SyncPaths {
-    /// iCloud 文件夹保持 `MenuSSH`（`…/CloudDocs/MenuSSH/menu-ssh-sync.json`）。
-    /// 还在旧构建上的设备只认这个目录。改名会把它们留在原地，同步文件也会被拆成两份。
-    /// Application Support、钥匙串 service 和 UserDefaults 会迁移；这条路径不迁。
+    /// `…/CloudDocs/SSH Bookmarks/menu-ssh-sync.json`。旧的 `MenuSSH` 目录在首次启动时迁过来。
     public static func iCloudDirectory(home: String) -> URL {
         URL(fileURLWithPath: home, isDirectory: true)
             .appendingPathComponent(

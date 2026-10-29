@@ -9,8 +9,8 @@ public enum ProductIdentity {
     public static let legacySupportDirectoryName = "MenuSSH"
     /// 日志放在 Application Support 里面，搬文件夹时一起搬走。
     public static let logsDirectoryName = "Logs"
-    /// iCloud 文件夹仍叫 MenuSSH。见 `SyncPaths`。
-    public static let iCloudDirectoryName = "MenuSSH"
+    public static let iCloudDirectoryName = "SSH Bookmarks"
+    public static let legacyICloudDirectoryName = "MenuSSH"
     public static let keychainService = "com.shellwalker.SSHBookmarks"
     public static let legacyKeychainService = "com.shellwalker.MenuSSH"
     public static let keychainLabel = "SSH Bookmarks"
@@ -154,5 +154,37 @@ public enum ProductEnvironment {
 
     public static func sshValue(_ name: String, environment: [String: String] = ProcessInfo.processInfo.environment) -> String? {
         EnvironmentAlias.string(primary: "SSHBOOKMARKS_SSH_\(name)", legacy: "MENUSH_SSH_\(name)", environment: environment)
+    }
+}
+
+/// iCloud 同步目录从 `MenuSSH` 改到 `SSH Bookmarks`。旧目录在、新目录不在时才搬。
+public enum ICloudDirectoryMigration {
+    public enum Result: Equatable {
+        case moved
+        case alreadyPresent
+        case nothingToMove
+    }
+
+    public static func directory(home: String, folderName: String) -> URL {
+        URL(fileURLWithPath: home, isDirectory: true)
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/\(folderName)", isDirectory: true)
+    }
+
+    public static func migrate(
+        home: String,
+        fileManager: FileManager = .default,
+        move: (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) }
+    ) throws -> Result {
+        let legacy = directory(home: home, folderName: ProductIdentity.legacyICloudDirectoryName)
+        let current = directory(home: home, folderName: ProductIdentity.iCloudDirectoryName)
+        var currentIsDirectory: ObjCBool = false
+        if fileManager.fileExists(atPath: current.path, isDirectory: &currentIsDirectory) {
+            return .alreadyPresent
+        }
+        var legacyIsDirectory: ObjCBool = false
+        let legacyExists = fileManager.fileExists(atPath: legacy.path, isDirectory: &legacyIsDirectory)
+        guard legacyExists, legacyIsDirectory.boolValue else { return .nothingToMove }
+        try move(legacy, current)
+        return .moved
     }
 }

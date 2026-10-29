@@ -85,10 +85,24 @@ public struct TunnelStep: Equatable, Sendable {
     }
 }
 
+/// 连续失败次数。手动启动或稳定运行满 `stableUptime` 后清零。自动重试必须把次数带过去，不能在 `start` 里归零。
+public enum TunnelFailureAccounting {
+    public static let stableUptime: TimeInterval = 30
+    public static let maxConsecutiveFailures = 5
+
+    public static func afterManualStart() -> Int { 0 }
+
+    public static func carriedIntoRetry(_ failures: Int) -> Int { failures }
+
+    public static func afterUptime(_ uptime: TimeInterval, current: Int) -> Int {
+        uptime >= stableUptime ? 0 : current
+    }
+}
+
 public enum TunnelReducer {
     public static let maxConcurrent = 8
     /// 意外退出后最多再试这么多次。间隔是 2、4、8、16、30 秒。
-    public static let maxRetries = 5
+    public static let maxRetries = TunnelFailureAccounting.maxConsecutiveFailures
 
     public static func backoff(afterFailure count: Int) -> TimeInterval {
         let steps = [2, 4, 8, 16, 30]

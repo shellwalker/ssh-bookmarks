@@ -223,6 +223,7 @@ final class SSHBookmarksUITests: XCTestCase {
 
     func testQuickTunnelBadgeConflictAndHostKey() throws {
         let en = try launch(language: "en", appearance: "light")
+        XCTAssertTrue(en.app.staticTexts["15432 → 127.0.0.1:5432"].waitForExistence(timeout: 8))
         let toggle = marked(en.app, "tunnel.toggle.API.15432")
         XCTAssertTrue(toggle.waitForExistence(timeout: 8))
         toggle.click()
@@ -233,6 +234,8 @@ final class SSHBookmarksUITests: XCTestCase {
         let hosts = marked(en.app, id.hosts)
         XCTAssertTrue(hosts.waitForExistence(timeout: 10))
         let api = marked(hosts, "host.API")
+        XCTAssertTrue(api.waitForExistence(timeout: 5))
+        XCTAssertTrue(api.label.contains("Production"), api.label)
         api.click()
         api.rightClick()
         chooseMenu(en.app, identifier: id.hostEdit, titles: ["Edit…"])
@@ -243,6 +246,8 @@ final class SSHBookmarksUITests: XCTestCase {
         en.app.terminate()
 
         let zhLight = try launch(language: "zh-Hans", appearance: "light")
+        shot(marked(zhLight.app, id.panel), "panel-favorite-zh-light", screen: "panel", appearance: "light", language: "zh-Hans")
+        XCTAssertTrue(zhLight.app.staticTexts["15432 → 127.0.0.1:5432"].waitForExistence(timeout: 8))
         marked(zhLight.app, "tunnel.toggle.API.15432").click()
         XCTAssertTrue(marked(zhLight.app, "panel.tunnelBadge").waitForExistence(timeout: 5))
         shot(marked(zhLight.app, id.panel), "panel-tunnels-zh-light", screen: "panel", appearance: "light", language: "zh-Hans")
@@ -268,6 +273,13 @@ final class SSHBookmarksUITests: XCTestCase {
         XCTAssertTrue(marked(hostKey.app, "tunnel.trust.API").waitForExistence(timeout: 5))
         shot(marked(hostKey.app, id.panel), "tunnel-hostkey-en-light", screen: "panel", appearance: "light", language: "en")
         hostKey.app.terminate()
+
+        let privilegedJSON = fixtureJSON().replacingOccurrences(of: "\"listenPort\": 15432", with: "\"listenPort\": 80")
+        let privileged = try launch(language: "en", appearance: "light", hostsJSON: privilegedJSON)
+        marked(privileged.app, "tunnel.toggle.API.80").click()
+        XCTAssertTrue(privileged.app.staticTexts["Listen on privileged port 80?"].waitForExistence(timeout: 5))
+        shot(marked(privileged.app, id.panel), "tunnel-privileged-en-light", screen: "panel", appearance: "light", language: "en")
+        privileged.app.terminate()
     }
 
     // MARK: - Launch

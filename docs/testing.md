@@ -32,7 +32,7 @@ CI 在一台 `macos-14` arm64 runner 上按顺序跑完。排队中的并行 job
 - 使用单独的 UserDefaults，并强制关闭同步、面板在连接后不关、Dock 图标保持显示。不从 `com.shellwalker.MenuSSH` 抄偏好。
 - `SSHBOOKMARKS_APPEARANCE=light|dark`（别名 `MENUSH_APPEARANCE`）固定外观。语言用启动参数 `-AppleLanguages`。
 - `SSHBOOKMARKS_FAKE_TERMINAL_LOG`（别名 `MENUSH_FAKE_TERMINAL_LOG`）把将要执行的 argv 和启动命令写成一行 JSON，不跑 AppleScript、不打开 Terminal。
-- 升级迁移（Application Support 改名、UserDefaults 抄写、钥匙串 service 选择、iCloud 目录名保持 `MenuSSH`）在 `DataMigrationTests` 里用临时目录和临时 suite 覆盖。日志在 Application Support 的 `Logs/`，跟着文件夹一起搬。
+- 升级迁移（Application Support 改名、UserDefaults 抄写、钥匙串 service 选择、iCloud 目录从 `MenuSSH` 搬到 `SSH Bookmarks`）在 `DataMigrationTests` 里用临时目录和临时 suite 覆盖。日志在 Application Support 的 `Logs/`，跟着文件夹一起搬。正式启动搬 iCloud 目录时走 `NSFileCoordinator`。
 - 站点窗口保持接近生产尺寸（宽不超过 960、高不超过 580），不再为了测试把窗口拉满屏幕。编辑表单自己滚动，保存栏始终露在外面。面板窗口仍靠右，高度不变。
 
 没有这些变量时，正式行为不变。
