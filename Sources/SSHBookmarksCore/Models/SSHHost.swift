@@ -105,7 +105,7 @@ public struct SSHHost: Codable, Hashable, Identifiable, Sendable {
     public var extraOptions: [SSHOption]
     /// 显式打开时追加 `-o ForwardAgent=yes`。
     public var forwardAgent: Bool
-    /// 连接后在终端里换行再输入的一行命令。空字符串表示不追加。
+    /// 连接后由 SSH 远程 shell 执行的一行命令。空字符串表示不追加。
     public var startupCommand: String
     public var isFavorite: Bool
     public var notes: String

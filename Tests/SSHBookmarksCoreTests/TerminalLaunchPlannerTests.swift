@@ -53,17 +53,19 @@ final class TerminalLaunchPlannerTests: XCTestCase {
         XCTAssertEqual(TerminalLaunchPlanner.mechanism(for: .ghostty, version: "1.3.1"), .appleScript)
     }
 
-    func testStartupCommandIsASecondLine() {
-        let plan = TerminalLaunchPlanner.plan(
-            terminal: .terminal, argv: argv, mode: .newWindow, startupCommand: "cd /app && tmux attach")
-        guard case .appleScript(let src) = plan else { return XCTFail("expected AppleScript") }
-        XCTAssertTrue(src.contains("/usr/bin/ssh -l 'o'\\\\''brien' -- h\\ncd /app && tmux attach"))
-    }
-
-    func testStartupCommandEscapesQuotesAndBackslashes() {
-        let plan = TerminalLaunchPlanner.plan(terminal: .iTerm2, argv: argv, mode: .newWindow, startupCommand: "echo \"a\\b\"")
-        guard case .appleScript(let src) = plan else { return XCTFail("expected AppleScript") }
-        XCTAssertTrue(src.contains("\\necho \\\"a\\\\b\\\""))
+    func testAllTerminalsKeepStartupInsideRemoteArgument() {
+        for command in ["echo ok;", "echo ok # comment", "echo \"a\\b\""] {
+            let remote = argv.dropLast() + ["h", command + "\nexec \"${SHELL:-/bin/sh}\" -l"]
+            var expected = Array(remote)
+            expected.insert("-t", at: expected.firstIndex(of: "--")!)
+            for terminal in TerminalApp.allCases {
+                let plan = TerminalLaunchPlanner.plan(
+                    terminal: terminal, argv: argv, mode: .newWindow,
+                    ghosttyVersion: "1.3.1", startupCommand: command)
+                guard case .appleScript(let source) = plan else { return XCTFail("expected AppleScript") }
+                XCTAssertTrue(source.contains(AppleScriptQuoting.stringLiteral(ShellQuoting.join(expected))))
+            }
+        }
     }
 
     func testLegacyGhosttyPassesStartupAsRemoteCommand() {
@@ -75,9 +77,20 @@ final class TerminalLaunchPlannerTests: XCTestCase {
                 executable: "/usr/bin/open",
                 arguments: [
                     "-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e",
-                    "/usr/bin/ssh", "-l", "o'brien", "-t", "--", "h", "tmux attach; exec \"$SHELL\" -l",
+                    "/usr/bin/ssh", "-l", "o'brien", "-t", "--", "h", "tmux attach\nexec \"${SHELL:-/bin/sh}\" -l",
                 ]
             ))
+    }
+
+    func testFailedSSHNeverExecutesStartupInLocalShell() throws {
+        let marker = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: marker) }
+        for command in ["touch " + ShellQuoting.quote(marker.path) + ";", "touch " + ShellQuoting.quote(marker.path) + " # comment"] {
+            let arguments = TerminalLaunchPlanner.connectionArguments(argv: ["/bin/false", "--", "server"], startupCommand: command)
+            let pid = try Review2Process.start("/bin/sh", ["-c", ShellQuoting.join(arguments)])
+            XCTAssertNotEqual(Review2Process.wait(pid), 0)
+            XCTAssertFalse(FileManager.default.fileExists(atPath: marker.path))
+        }
     }
 
     func testVersionCompare() {
