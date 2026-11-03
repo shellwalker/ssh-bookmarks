@@ -157,11 +157,11 @@ private struct DiagnosticsPage: View {
                     Text(
                         "The log records app version, connection and tunnel events, exit codes, and error categories. It stays on this Mac."
                     )
-                        .font(.system(size: 12))
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .padding(.horizontal, 12)
-                        .padding(.top, 10)
+                    .font(.system(size: 12))
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 12)
+                    .padding(.top, 10)
                     SettingsItemRow(id: .diagnosticFile, showsDivider: true)
                     SettingsItemRow(id: .diagnosticRedactNames, showsDivider: true)
                     infoRow("Retention", value: Text("7 days"))
@@ -193,11 +193,11 @@ private struct DiagnosticsPage: View {
             SettingsSection("Export Diagnostics") {
                 VStack(alignment: .leading, spacing: 8) {
                     Text(exportDescription)
-                    .font(.system(size: 12))
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .padding(.horizontal, 12)
-                    .padding(.top, 10)
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .padding(.horizontal, 12)
+                        .padding(.top, 10)
                     Button("Export Diagnostic Log…") { DiagnosticActions.export(settings: settings, hosts: hosts) }
                         .buttonStyle(.borderedProminent)
                         .padding(.horizontal, 12)
@@ -228,7 +228,7 @@ private struct DiagnosticsPage: View {
         let files = DiagnosticLog.snapshots()
         let bytes = files.reduce(0) { $0 + $1.byteCount }
         let size = ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
-        return L10n.format("%lld files · %@", Int64(files.count), size)
+        return L10n.countFormat(LocalizedCount.diagnosticSummaryKey(count: files.count), Int64(files.count), size)
     }
 
     private func infoRow(_ title: LocalizedStringKey, value: Text) -> some View {

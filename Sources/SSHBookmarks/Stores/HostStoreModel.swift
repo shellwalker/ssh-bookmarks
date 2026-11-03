@@ -389,8 +389,8 @@ final class HostStoreModel: ObservableObject {
     }
 
     func importNotice(_ plan: SSHConfigImportPlan) -> String {
-        let counts = L10n.format(
-            "Imported %lld hosts. Skipped %lld duplicates.",
+        let counts = L10n.countFormat(
+            LocalizedCount.importSummaryKey(imported: plan.hosts.count, skipped: plan.skippedDuplicates),
             Int64(plan.hosts.count),
             Int64(plan.skippedDuplicates)
         )

@@ -171,7 +171,7 @@
 "Stopped" = "已停止";
 "Failed" = "失败";
 "Start Tunnel" = "启动隧道";
-"Listen on privileged port %lld?" = "监听特权端口 %lld？";
+"Listen on privileged port %@?" = "监听特权端口 %@？";
 "macOS may refuse ports below 1024." = "低于 1024 的端口可能没有权限。";
 "Listen beyond this Mac?" = "在这台 Mac 以外监听？";
 "Connections to %@ will be accepted from the network, not only from this Mac." = "网络上的其他设备也能连到 %@，不只是这台 Mac。";
@@ -245,8 +245,8 @@
 "The saved password will be removed when you save." = "保存时会移除已存的密码。";
 "Jump host cannot be this host." = "跳板机不能是这个站点自己。";
 "Jump hosts form a cycle." = "跳板机形成了循环。";
-"Listen port %lld is used more than once." = "监听端口 %lld 被使用了多次。";
-"Port %lld is privileged. Binding it may need extra permission." = "端口 %lld 是特权端口，绑定它可能需要额外权限。";
+"Listen port %@ is used more than once." = "监听端口 %@ 被使用了多次。";
+"Port %@ is privileged. Binding it may need extra permission." = "端口 %@ 是特权端口，绑定它可能需要额外权限。";
 "Startup command looks like it contains a password. It is stored in the hosts file, not the Keychain." = "启动命令看起来包含密码。它会写进站点文件，而不是钥匙串。";
 "Undo" = "撤销";
 "Undid the last change. A deleted password stays removed from the Keychain." = "已撤销上一步。已删除的密码不会回到钥匙串。";
@@ -283,8 +283,8 @@
 "Show in the menu bar" = "在菜单栏中开关";
 "Reconnect if the tunnel drops" = "断开后自动重连";
 "Open in Terminal to Trust" = "在终端中打开一次以信任";
-"Local port %lld is already in use" = "本地端口 %lld 已被占用";
-"No permission to listen on port %lld" = "没有权限监听端口 %lld";
+"Local port %@ is already in use" = "本地端口 %@ 已被占用";
+"No permission to listen on port %@" = "没有权限监听端口 %@";
 "Login was refused. Check the key or the password in the Keychain" = "登录被拒绝。请检查密钥或钥匙串里的密码";
 "This host key is not trusted yet." = "还没有信任这台主机的密钥。";
 "The host key changed and was not accepted." = "主机密钥和上次不同，未自动接受。";
@@ -306,3 +306,11 @@
 "Failed to compile AppleScript" = "无法编译 AppleScript";
 
 "Failed to export diagnostics" = "无法导出诊断日志";
+
+"%lld file · %@" = "%lld 个文件 · %@";
+
+"Imported %lld host. Skipped %lld duplicate." = "已导入 %lld 个站点。已跳过 %lld 个重复项。";
+
+"Imported %lld host. Skipped %lld duplicates." = "已导入 %lld 个站点。已跳过 %lld 个重复项。";
+
+"Imported %lld hosts. Skipped %lld duplicate." = "已导入 %lld 个站点。已跳过 %lld 个重复项。";
