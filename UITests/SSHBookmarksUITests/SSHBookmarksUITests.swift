@@ -221,7 +221,8 @@ final class SSHBookmarksUITests: XCTestCase {
                 if pane == "diagnostics", appearance == "light" {
                     let copy = marked(app, "diagnostics.copy")
                     XCTAssertTrue(copy.waitForExistence(timeout: 8))
-                    let scroll = marked(app, id.settings).scrollViews.firstMatch
+                    // 第一个 ScrollView 是左侧栏，要找包含复制按钮的详情区。
+                    let scroll = marked(app, id.settings).scrollViews.containing(.any, identifier: "diagnostics.copy").firstMatch
                     XCTAssertTrue(scroll.waitForExistence(timeout: 5))
                     for _ in 0..<4 {
                         let viewport = scroll.frame
