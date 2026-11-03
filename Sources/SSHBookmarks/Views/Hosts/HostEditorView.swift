@@ -338,7 +338,7 @@ struct HostEditorView: View {
                 }
             }
             ForEach(privilegedPorts, id: \.self) { port in
-                Text(verbatim: L10n.format("Port %lld is privileged. Binding it may need extra permission.", Int64(port)))
+                Text(verbatim: L10n.format("Port %@ is privileged. Binding it may need extra permission.", String(port)))
                     .font(.caption)
                     .foregroundStyle(.orange)
             }
@@ -551,7 +551,7 @@ struct HostEditorView: View {
             if case .duplicateListen(let port) = issue { return port }
             return nil
         }).first {
-            fail(L10n.format("Listen port %lld is used more than once.", Int64(duplicate)), field: .portForwards)
+            fail(L10n.format("Listen port %@ is used more than once.", String(duplicate)), field: .portForwards)
             return
         }
 
