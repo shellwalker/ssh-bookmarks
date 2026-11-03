@@ -91,12 +91,13 @@ struct SettingsRow<Accessory: View>: View {
 /// 分段选择器（magpie 的“跟随系统 / 浅色 / 深色”样式）。
 @MainActor
 struct SegmentedSetting<Value: Hashable & Identifiable>: View {
+    let label: LocalizedStringKey
     @Binding var selection: Value
     let options: [Value]
     let title: (Value) -> LocalizedStringKey
 
     var body: some View {
-        Picker("", selection: $selection) {
+        Picker(label, selection: $selection) {
             ForEach(options) { option in
                 Text(title(option)).tag(option)
             }
