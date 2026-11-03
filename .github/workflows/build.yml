@@ -16,10 +16,13 @@ concurrency:
   cancel-in-progress: true
 
 # 原先拆成三个并行 job。一台 macos-14 被占用时，排在队列里的 job 大约 15 分钟后会被取消，
-# 而且不会开始任何步骤。合成一个 job 后，分到的那一台跑完 lint、单测、打包、sshd 和界面测试。
+# 而且不会开始任何步骤。所以 lint、单测、打包和 sshd 集成测试留在同一个 job（verify）里。
+# 界面测试约占整次运行的四分之三，拆到单独的 ui-tests job，只在合并到 main（目标是 main 的 PR、推送 main）
+# 和手动运行时跑；develop 的推送和 PR 上它显示为 skipped。main 的分支保护要求这两个 job 都通过。
+# 两个 job 的 name 是分支保护里的必需检查名，改名前先改保护规则。
 jobs:
   verify:
-    name: Build, test, and UI (macOS 14, arm64)
+    name: Build and test (macOS 14, arm64)
     runs-on: macos-14
     timeout-minutes: 45
     steps:
@@ -95,6 +98,26 @@ jobs:
             /tmp/menush-ci-sshd/*.conf
           if-no-files-found: ignore
           retention-days: 7
+
+  ui-tests:
+    name: UI tests (macOS 14, arm64)
+    needs: verify
+    if: github.event_name == 'workflow_dispatch' || (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'pull_request' && github.base_ref == 'main')
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Select Xcode
+        run: |
+          XCODE="$(find /Applications -maxdepth 1 -name 'Xcode_16*.app' | sort -V | tail -n 1)"
+          if [[ -n "$XCODE" ]]; then
+            sudo xcode-select -s "$XCODE"
+          fi
+          xcodebuild -version
 
       - name: UI tests
         env:

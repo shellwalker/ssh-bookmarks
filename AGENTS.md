@@ -47,12 +47,13 @@ SSH Bookmarks 是 macOS 14+ 的菜单栏 SSH 站点管理器（SwiftUI + AppKit�
 
 ## 如何验证
 
-- Linux 机器不能构建 macOS 应用目标，只能跑 Core：`swift build`、`swift test`（不含依赖 Darwin 的集成测试）。最终结果以 GitHub Actions 为准（`build.yml`，`macos-14` arm64）：swift-format lint → `swift test` → 打包 → 临时 sshd 集成测试 → UI 测试。
+- Linux 机器不能构建 macOS 应用目标，只能跑 Core：`swift build`、`swift test`（不含依赖 Darwin 的集成测试）。最终结果以 GitHub Actions 为准（`build.yml`，`macos-14` arm64）：swift-format lint → `swift test` → 打包 → 临时 sshd 集成测试 → UI 测试。UI 测试约占整次运行的四分之三，放在单独的 job「UI tests (macOS 14, arm64)」里，只在目标是 `main` 的 PR、推送 `main` 和手动运行（`gh workflow run build.yml --ref <分支>`）时跑；`develop` 的推送和 PR 上它显示为 skipped。
+- `main` 有分支保护：必需检查「Build and test (macOS 14, arm64)」和「UI tests (macOS 14, arm64)」。develop → main 的发版 PR 必须两项都通过（UI 测试必须跑并且通过）才能合并。改 job 名之前先改保护规则。
 - 常用命令：
   - `gh pr checks <PR> --watch`
   - `gh run view <run-id> --log-failed`
   - `gh run download <run-id> -n ui-screenshots`
-- UI 截图来自 CI artifact `ui-screenshots`（`build/ui-screenshots/`），CI 也会在 PR 上评论截图索引。不做像素比对。
+- UI 截图来自 CI artifact `ui-screenshots`（`build/ui-screenshots/`），只有跑了 UI 测试的运行才有：develop → main 的发版 PR，或对功能分支手动运行一次（`gh workflow run build.yml --ref <分支>`）。CI 会在目标是 main 的 PR 上评论截图索引。不做像素比对。
 
 ## 编码规则
 

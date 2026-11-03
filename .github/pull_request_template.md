@@ -20,7 +20,7 @@
 
 ## Screenshots / 截图
 
-<!-- UI 改动必填。截图来自 CI artifact `ui-screenshots`（运行页面底部）。 -->
+<!-- UI 改动必填。截图来自 CI artifact `ui-screenshots`（运行页面底部）。目标是 develop 的 PR 默认不跑 UI 测试：对本分支手动运行一次 `gh workflow run build.yml --ref <分支>` 取截图，或在 develop → main 的发版 PR 里补。 -->
 
 ## Not in this PR / 暂不包含
 
@@ -43,5 +43,6 @@
 - [ ] 新增界面文字同时有 zh-Hans 和 en（`Resources/*.lproj/Localizable.strings`）
 - [ ] 日志、提交、PR 描述里没有令牌、密码或其他密钥
 - [ ] 目标分支是 `develop`
+- [ ] 发版 PR（develop → main）：「UI tests (macOS 14, arm64)」已运行并通过
 - [ ] 合并后删除源分支
 - [ ] UI 改动附了截图
