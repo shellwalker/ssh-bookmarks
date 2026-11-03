@@ -434,7 +434,7 @@ private struct SyncFolderRow: View {
             HStack(alignment: .center, spacing: 16) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text("Sync Folder").font(.system(size: 13, weight: .medium))
-                    Text(syncFolderTitle)
+                    syncFolderTitle
                         .font(.system(size: 12))
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
