@@ -148,6 +148,8 @@ final class SSHBookmarksUITests: XCTestCase {
         XCTAssertTrue(marked(app, id.panelImport).waitForExistence(timeout: 15))
         marked(app, id.panelNewHost).click()
         XCTAssertTrue(marked(app, id.editorKeyPicker).waitForExistence(timeout: 8))
+        reveal(marked(app, id.editorKeyPicker), app: app)
+        XCTAssertTrue(isComfortablyVisible(marked(app, id.editorKeyPicker), app: app))
         shot(marked(app, id.editorKeyPicker), "key-picker-en-light", screen: "editor", appearance: "light", language: "en")
         marked(app, id.editorCancel).click()
         let discard = app.sheets.staticTexts["Discard unsaved changes?"].firstMatch
@@ -172,7 +174,7 @@ final class SSHBookmarksUITests: XCTestCase {
         let notice = marked(app, id.hostsNotice)
         XCTAssertTrue(notice.waitForExistence(timeout: 5))
         let noticeText = notice.label + " " + ((notice.value as? String) ?? "")
-        XCTAssertTrue(noticeText.contains("Imported 1 hosts"), noticeText)
+        XCTAssertTrue(noticeText.contains("Imported 1 host."), noticeText)
         XCTAssertTrue(noticeText.contains("HostName is saved in notes"), noticeText)
         row.rightClick()
         chooseMenu(app, identifier: id.hostDelete, titles: ["Delete…"])
@@ -216,6 +218,23 @@ final class SSHBookmarksUITests: XCTestCase {
                 marked(app, "settings.pane.\(pane)").click()
                 shot(
                     marked(app, id.settings), "settings-\(pane)-\(tag)", screen: pane, appearance: appearance, language: language)
+                if pane == "diagnostics", appearance == "light" {
+                    let copy = marked(app, "diagnostics.copy")
+                    XCTAssertTrue(copy.waitForExistence(timeout: 8))
+                    let scroll = marked(app, id.settings).scrollViews.firstMatch
+                    XCTAssertTrue(scroll.waitForExistence(timeout: 5))
+                    for _ in 0..<4 {
+                        let viewport = scroll.frame
+                        if copy.frame.minY >= viewport.minY + 4, copy.frame.maxY <= viewport.maxY - 4 { break }
+                        scroll.scroll(byDeltaX: 0, deltaY: -350)
+                    }
+                    XCTAssertTrue(copy.isHittable)
+                    XCTAssertGreaterThanOrEqual(copy.frame.minY, scroll.frame.minY)
+                    XCTAssertLessThanOrEqual(copy.frame.maxY, scroll.frame.maxY)
+                    shot(
+                        marked(app, id.settings), "settings-diagnostics-bottom-\(language == "en" ? "en" : "zh")-light",
+                        screen: pane, appearance: appearance, language: language)
+                }
             }
             app.terminate()
         }
@@ -293,6 +312,17 @@ final class SSHBookmarksUITests: XCTestCase {
         XCTAssertTrue(privileged.app.staticTexts["Listen on privileged port 80?"].waitForExistence(timeout: 5))
         shot(marked(privileged.app, id.panel), "tunnel-privileged-en-light", screen: "panel", appearance: "light", language: "en")
         privileged.app.terminate()
+
+        let nonLoopbackJSON = fixtureJSON().replacingOccurrences(
+            of: "\"listenPort\": 15432", with: "\"bindAddress\": \"0.0.0.0\", \"listenPort\": 15432")
+        let nonLoopback = try launch(language: "en", appearance: "light", hostsJSON: nonLoopbackJSON)
+        let nonLoopbackToggle = marked(nonLoopback.app, "tunnel.toggle.API.15432")
+        XCTAssertTrue(nonLoopbackToggle.waitForExistence(timeout: 8))
+        nonLoopbackToggle.click()
+        XCTAssertTrue(nonLoopback.app.staticTexts["Listen beyond this Mac?"].waitForExistence(timeout: 5))
+        shot(marked(nonLoopback.app, id.panel), "tunnel-nonloopback-en-light", screen: "panel", appearance: "light", language: "en")
+        nonLoopback.app.terminate()
+
     }
 
     // MARK: - Launch
