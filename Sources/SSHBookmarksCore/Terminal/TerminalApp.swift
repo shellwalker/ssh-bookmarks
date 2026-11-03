@@ -159,19 +159,15 @@ public enum TerminalLaunchPlanner {
                     end tell
                     """)
             }
-            // 兼容旧版 Ghostty：没有启动命令时 argv 直接交给 -e。
-            // 有启动命令时改用 sh -c，让同一段文本在换行后继续。命令本身是单个参数，不再经外层 shell。
-            if let startupCommand, !startupCommand.isEmpty {
-                return .process(
-                    executable: "/usr/bin/open",
-                    arguments: [
-                        "-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e", "/bin/sh", "-c", commandLine,
-                    ]
-                )
+            // 旧版没有 initial input；启动命令作为 SSH 远程命令传递，绝不交给本地 sh。
+            var remoteArgv = argv
+            if let startupCommand, !startupCommand.isEmpty, let separator = remoteArgv.firstIndex(of: "--") {
+                remoteArgv.insert("-t", at: separator)
+                remoteArgv.append(startupCommand + "; exec \"$SHELL\" -l")
             }
             return .process(
                 executable: "/usr/bin/open",
-                arguments: ["-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e"] + argv
+                arguments: ["-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e"] + remoteArgv
             )
         }
     }
