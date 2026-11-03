@@ -114,7 +114,6 @@ struct SSHBookmarksUITestApp: App {
                 .environmentObject(tunnels)
         }
         .defaultSize(width: 380, height: 520)
-        .presentUITestPanelAtLaunch()
 
         Window("SSH Bookmarks", id: WindowID.hosts) {
             HostManagerView()
@@ -129,17 +128,5 @@ struct SSHBookmarksUITestApp: App {
                 .environmentObject(settings)
         }
         .defaultSize(width: 860, height: 560)
-    }
-}
-
-private extension Scene {
-    /// macOS 15 显式呈现测试面板，同时兼容 macOS 14 部署目标。
-    @SceneBuilder
-    func presentUITestPanelAtLaunch() -> some Scene {
-        if #available(macOS 15.0, *) {
-            self.defaultLaunchBehavior(.presented)
-        } else {
-            self
-        }
     }
 }
