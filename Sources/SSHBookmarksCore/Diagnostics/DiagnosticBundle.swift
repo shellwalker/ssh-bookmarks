@@ -20,6 +20,11 @@ public enum DiagnosticBundle {
         }
     }
 
+    /// Propagate write errors to the UI so the user can retry the export.
+    public static func write(_ data: Data, to url: URL) throws {
+        try data.write(to: url, options: .atomic)
+    }
+
     public static func makeZIP(_ input: Input, redactor: DiagnosticRedactor) -> Data {
         let log = redactor.redact(input.logText)
         // 交给 JSON 编码器处理全部控制字符，不能手写字符串转义。
@@ -28,7 +33,8 @@ public enum DiagnosticBundle {
             "os": redactor.redact(input.osVersion), "sshPath": redactor.redact(input.sshPath),
             "terminal": input.terminal, "redactsNames": redactor.redactNames, "containsPasswords": false,
         ]
-        let manifestData = (try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])) ?? Data("{}".utf8)
+        let manifestData =
+            (try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])) ?? Data("{}".utf8)
         return StoredZip.archive([
             ("manifest.json", manifestData),
             ("diagnostics.log", Data(log.utf8)),
