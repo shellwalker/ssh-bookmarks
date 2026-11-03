@@ -235,7 +235,15 @@ final class SSHBookmarksUITests: XCTestCase {
         XCTAssertTrue(hosts.waitForExistence(timeout: 10))
         let api = marked(hosts, "host.API")
         XCTAssertTrue(api.waitForExistence(timeout: 5))
-        XCTAssertTrue(api.label.contains("Production"), api.label)
+        // SwiftUI 会把行的 identifier 复制到子元素上，firstMatch 可能是没有标签的头像；在所有匹配里找分组名。
+        let apiMatches = hosts.descendants(matching: .any).matching(identifier: "host.API")
+        let showsGroup = NSPredicate { _, _ in
+            apiMatches.allElementsBoundByIndex.contains { $0.label.contains("Production") }
+                || apiMatches.staticTexts["Production"].exists
+                || hosts.staticTexts.matching(identifier: "host.group.API").firstMatch.exists
+        }
+        let groupShown = expectation(for: showsGroup, evaluatedWith: nil)
+        wait(for: [groupShown], timeout: 5)
         api.click()
         api.rightClick()
         chooseMenu(en.app, identifier: id.hostEdit, titles: ["Edit…"])
