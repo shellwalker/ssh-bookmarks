@@ -30,12 +30,12 @@ struct HostEditorView: View {
 
     let outline: [GroupOutlineEntry]
     let otherHosts: [SSHHost]
-    let onSave: (SSHHost) -> Void
+    let onSave: (SSHHost) -> String?
 
     private let keychain = KeychainService()
     private let otherKeySentinel = "\u{0}other-file"
 
-    init(host: SSHHost, outline: [GroupOutlineEntry], otherHosts: [SSHHost], onSave: @escaping (SSHHost) -> Void) {
+    init(host: SSHHost, outline: [GroupOutlineEntry], otherHosts: [SSHHost], onSave: @escaping (SSHHost) -> String?) {
         _draft = State(initialValue: host)
         _baseline = State(initialValue: host)
         _portText = State(initialValue: host.port.map(String.init) ?? "")
@@ -584,18 +584,22 @@ struct HostEditorView: View {
             return
         }
 
-        let account = KeychainService.account(hostID: host.id, kind: .password)
-        if removeStoredPassword {
-            try? keychain.delete(account: account)
-        } else if host.authMethod == .password, !password.isEmpty {
-            do {
-                try keychain.set(password, account: account)
-            } catch {
-                fail(L10n.format("Keychain error: %@", error.localizedDescription), field: nil)
-                return
-            }
+        // 先落盘再变更凭据。失败时保留编辑器和密码草稿，允许重试。
+        if let error = onSave(host) {
+            fail(error, field: nil)
+            return
         }
-        onSave(host)
+        let account = KeychainService.account(hostID: host.id, kind: .password)
+        do {
+            if removeStoredPassword {
+                try keychain.delete(account: account)
+            } else if host.authMethod == .password, !password.isEmpty {
+                try keychain.set(password, account: account)
+            }
+        } catch {
+            fail(L10n.format("Keychain error: %@", error.localizedDescription), field: nil)
+            return
+        }
         dismiss()
     }
 
@@ -751,6 +755,20 @@ private struct PortForwardEditor: View {
 }
 
 extension PortForward {
+    /// 面板上的人话：本机端口 → 目标。
+    var panelRoute: String {
+        let target: String
+        if let destinationHost, let destinationPort {
+            target = "\(destinationHost):\(destinationPort)"
+        } else if let destinationHost {
+            target = destinationHost
+        } else {
+            target = ""
+        }
+        if target.isEmpty { return "\(listenPort)" }
+        return "\(listenPort) → \(target)"
+    }
+
     var editorSummary: String {
         let bind = bindAddress.map { "\($0):" } ?? ""
         switch kind {

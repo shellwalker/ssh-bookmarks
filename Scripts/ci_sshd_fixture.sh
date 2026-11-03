@@ -2,13 +2,14 @@
 # 在本机起两个临时 sshd，供集成测试使用。只监听 127.0.0.1。
 # start 把连接参数写到 build/sshd-fixture.env（不含密码明文）。
 # stop 结束 sshd。测试用户留在一次性 runner 上，不写回仓库。
-set -euo pipefail
+set -Eeuo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 DIR="${MENUSH_SSHD_DIR:-/tmp/menush-ci-sshd}"
 ENV_FILE="$ROOT/build/sshd-fixture.env"
 USER_NAME="menushssh"
 ASKPASS="$DIR/askpass"
+SSH_CONFIG_BACKUP="/etc/ssh/ssh_config.menush-ci-backup"
 
 usage() {
   echo "usage: $0 start|stop" >&2
@@ -30,6 +31,10 @@ stop_one() {
 stop() {
   stop_one "$DIR/sshd-a.pid"
   stop_one "$DIR/sshd-b.pid"
+  if sudo test -f "$SSH_CONFIG_BACKUP"; then
+    sudo cp -p "$SSH_CONFIG_BACKUP" /etc/ssh/ssh_config
+    sudo rm -f "$SSH_CONFIG_BACKUP"
+  fi
 }
 
 enable_login() {
@@ -124,6 +129,8 @@ start() {
     echo "sshd fixture requires macOS" >&2
     exit 1
   fi
+  # 已有备份时，任何启动阶段失败都必须恢复，包括嵌套函数。
+  trap 'stop' ERR
   mkdir -p "$DIR" "$ROOT/build" "$DIR/.ssh"
   chmod 755 "$DIR"
   # Password stays in the askpass script (mode 700), not in the env file or logs.
@@ -157,7 +164,8 @@ Host *
 EOF
   chmod 644 "$DIR/.ssh/config"
   # -J 的跳板连接不一定继承命令行 -o。把主机密钥检查关掉写进系统配置的最前面（第一次出现的值生效）。
-  if ! sudo grep -q 'MENUSH-CI-HOSTKEY' /etc/ssh/ssh_config 2>/dev/null; then
+  if ! sudo test -f "$SSH_CONFIG_BACKUP" && ! sudo grep -q 'MENUSH-CI-HOSTKEY' /etc/ssh/ssh_config 2>/dev/null; then
+    sudo cp -p /etc/ssh/ssh_config "$SSH_CONFIG_BACKUP"
     local prefix
     prefix="$(mktemp)"
     cat >"$prefix" <<EOF
@@ -200,6 +208,7 @@ MENUSH_SSH_HOME=$DIR
 SSHBOOKMARKS_SSH_HOME=$DIR
 EOF
   chmod 600 "$ENV_FILE"
+  trap - ERR
   echo "sshd fixture ready on 127.0.0.1:$port_a and :$port_b"
 }
 

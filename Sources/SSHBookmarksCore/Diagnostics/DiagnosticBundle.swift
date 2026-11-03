@@ -22,20 +22,15 @@ public enum DiagnosticBundle {
 
     public static func makeZIP(_ input: Input, redactor: DiagnosticRedactor) -> Data {
         let log = redactor.redact(input.logText)
-        let manifest = """
-            {
-              "app": "SSH Bookmarks",
-              "version": \(jsonString(input.version)),
-              "build": \(jsonString(input.build)),
-              "os": \(jsonString(redactor.redact(input.osVersion))),
-              "sshPath": \(jsonString(redactor.redact(input.sshPath))),
-              "terminal": \(jsonString(input.terminal)),
-              "redactsNames": \(redactor.redactNames),
-              "containsPasswords": false
-            }
-            """
+        // 交给 JSON 编码器处理全部控制字符，不能手写字符串转义。
+        let manifest: [String: Any] = [
+            "app": "SSH Bookmarks", "version": input.version, "build": input.build,
+            "os": redactor.redact(input.osVersion), "sshPath": redactor.redact(input.sshPath),
+            "terminal": input.terminal, "redactsNames": redactor.redactNames, "containsPasswords": false,
+        ]
+        let manifestData = (try? JSONSerialization.data(withJSONObject: manifest, options: [.prettyPrinted, .sortedKeys])) ?? Data("{}".utf8)
         return StoredZip.archive([
-            ("manifest.json", Data(manifest.utf8)),
+            ("manifest.json", manifestData),
             ("diagnostics.log", Data(log.utf8)),
         ])
     }
@@ -55,11 +50,4 @@ public enum DiagnosticBundle {
         )
     }
 
-    private static func jsonString(_ value: String) -> String {
-        let escaped =
-            value
-            .replacingOccurrences(of: "\\", with: "\\\\")
-            .replacingOccurrences(of: "\"", with: "\\\"")
-        return "\"\(escaped)\""
-    }
 }

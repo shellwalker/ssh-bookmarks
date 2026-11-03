@@ -66,7 +66,7 @@ final class TerminalLaunchPlannerTests: XCTestCase {
         XCTAssertTrue(src.contains("\\necho \\\"a\\\\b\\\""))
     }
 
-    func testLegacyGhosttyWrapsStartupInShell() {
+    func testLegacyGhosttyPassesStartupAsRemoteCommand() {
         let plan = TerminalLaunchPlanner.plan(
             terminal: .ghostty, argv: argv, mode: .newWindow, ghosttyVersion: "1.2.3", startupCommand: "tmux attach")
         XCTAssertEqual(
@@ -74,8 +74,8 @@ final class TerminalLaunchPlannerTests: XCTestCase {
             .process(
                 executable: "/usr/bin/open",
                 arguments: [
-                    "-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e", "/bin/sh", "-c",
-                    "/usr/bin/ssh -l 'o'\\''brien' -- h\ntmux attach",
+                    "-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e",
+                    "/usr/bin/ssh", "-l", "o'brien", "-t", "--", "h", "tmux attach; exec \"$SHELL\" -l",
                 ]
             ))
     }

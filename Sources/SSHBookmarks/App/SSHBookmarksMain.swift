@@ -7,6 +7,7 @@ enum SSHBookmarksMain {
     static func main() {
         // 先搬旧的 Application Support，再让 askpass 或界面去创建新目录。
         LegacyDataMigration.moveSupportFolderIfNeeded()
+        LegacyDataMigration.moveICloudFolderIfNeeded()
         // ssh 继承启动脚本的环境变量后再调用本二进制。普通打开没有这个变量。
         // 新脚本写 SSHBOOKMARKS_ASKPASS_TOKEN，旧脚本的 MENUSH_ASKPASS_TOKEN 仍认。
         if AskpassTokenStore.token(in: ProcessInfo.processInfo.environment) != nil {

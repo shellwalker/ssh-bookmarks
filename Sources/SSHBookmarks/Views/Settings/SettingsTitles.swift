@@ -124,7 +124,7 @@ extension SettingsItemID {
         case .importSSHConfig: return "Adds Host entries that are not in SSH Bookmarks yet"
         case .dataFile: return "Hosts are stored as JSON; passwords live in the Keychain"
         case .sync: return "Sync is off. Hosts stay on this Mac."
-        case .syncFolder: return "Default: iCloud Drive/MenuSSH"
+        case .syncFolder: return "iCloud Drive/SSH Bookmarks"
         case .diagnosticFile: return "The log stays on this Mac and is off until you turn it on"
         case .diagnosticRedactNames: return "On by default. Passwords and tokens are always removed"
         case .diagnosticExport: return "Save a ZIP that never includes passwords, tokens, or private keys"

@@ -46,6 +46,17 @@ struct MenuBarContentView: View {
             footer
         }
         .frame(width: 340)
+        .confirmationDialog(
+            Text(verbatim: tunnels.pendingPrompt?.title ?? ""),
+            isPresented: Binding(get: { tunnels.pendingPrompt != nil }, set: { if !$0 { tunnels.cancelPrompt() } }),
+            titleVisibility: .visible
+        ) {
+            Button("Start Tunnel") { tunnels.acknowledgePrompt() }
+                .accessibilityIdentifier(UITestID.tunnelConfirm)
+            Button("Cancel", role: .cancel) { tunnels.cancelPrompt() }
+        } message: {
+            Text(verbatim: tunnels.pendingPrompt?.message ?? "")
+        }
         .modifier(UITestContainer(identifier: UITestID.panel))
         .background(WindowReader { window in keyMonitor.attach(to: window) })
         .onAppear {
@@ -97,38 +108,78 @@ struct MenuBarContentView: View {
 
     private func tunnelRows(_ host: SSHHost) -> some View {
         let forwards = host.portForwards.filter { $0.quickToggle && $0.kind == .local }
-        return VStack(alignment: .leading, spacing: 2) {
+        return VStack(alignment: .leading, spacing: 4) {
             ForEach(forwards) { forward in
                 let session = tunnels.session(for: forward.id)
-                HStack(spacing: 8) {
-                    Toggle(
-                        isOn: Binding(
-                            get: { session?.phase == .running || session?.phase == .starting },
-                            set: { _ in tunnels.toggle(host: host, forward: forward) }
-                        )
-                    ) {
-                        Text(verbatim: forward.editorSummary)
-                            .font(.system(size: 11, design: .monospaced))
+                let state = tunnelState(session?.phase)
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .center, spacing: 8) {
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(verbatim: forward.panelRoute)
+                                .font(.system(size: 11))
+                                .fixedSize(horizontal: false, vertical: true)
+                            Text(state)
+                                .font(.system(size: 10))
+                                .foregroundStyle(.secondary)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer(minLength: 4)
+                        Button {
+                            copyTunnelAddress(session, forward: forward)
+                        } label: {
+                            Image(systemName: "doc.on.doc")
+                        }
+                        .buttonStyle(.borderless)
+                        .help("Copy address")
+                        .accessibilityLabel(Text("Copy address"))
+                        .accessibilityIdentifier(UITestID.tunnelCopy(host.label, forward.listenPort))
+                        Toggle(
+                            isOn: Binding(
+                                get: { session?.phase == .running || session?.phase == .starting },
+                                set: { _ in tunnels.toggle(host: host, forward: forward) }
+                            )
+                        ) {
+                            Text(verbatim: "")
+                        }
+                        .toggleStyle(.switch)
+                        .labelsHidden()
+                        .accessibilityIdentifier(UITestID.tunnelToggle(host.label, forward.listenPort))
+                        .accessibilityLabel(Text(verbatim: "\(host.label), \(forward.panelRoute), \(state)"))
                     }
-                    .toggleStyle(.switch)
-                    .accessibilityIdentifier(UITestID.tunnelToggle(host.label, forward.listenPort))
-                    .accessibilityLabel(Text(verbatim: "\(host.label) \(forward.listenPort)"))
                     if session?.phase == .failed(.hostKeyNew) || session?.phase == .failed(.hostKeyChanged) {
                         Button("Open in Terminal to Trust") { tunnels.trustInTerminal(host: host, settings: settings) }
                             .font(.system(size: 11))
+                            .buttonStyle(.borderless)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                             .accessibilityIdentifier(UITestID.tunnelTrust(host.label))
+                    }
+                    if let message = session?.message, !message.isEmpty {
+                        Text(verbatim: message)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier(UITestID.tunnelMessage(host.label))
                     }
                 }
                 .padding(.horizontal, 16)
-                if let message = session?.message, !message.isEmpty {
-                    Text(verbatim: message)
-                        .font(.system(size: 11))
-                        .foregroundStyle(.orange)
-                        .padding(.horizontal, 16)
-                        .accessibilityIdentifier(UITestID.tunnelMessage(host.label))
-                }
             }
         }
+    }
+
+    private func tunnelState(_ phase: TunnelPhase?) -> String {
+        switch phase {
+        case .starting: return String(localized: "Connecting")
+        case .running: return String(localized: "Running")
+        case .failed: return String(localized: "Failed")
+        case .idle, nil: return String(localized: "Stopped")
+        }
+    }
+
+    private func copyTunnelAddress(_ session: TunnelSession?, forward: PortForward) {
+        let address = session?.displayAddress ?? "127.0.0.1:\(forward.listenPort)"
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(address, forType: .string)
     }
 
     private func stop(_ session: TunnelSession) {

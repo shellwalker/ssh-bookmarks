@@ -1,4 +1,5 @@
 import AppKit
+import Darwin
 import Foundation
 import OSLog
 import SSHBookmarksCore
@@ -20,7 +21,7 @@ enum DiagnosticLog {
         AppLog.ssh.info("connect terminal=\(terminal, privacy: .public) askpass=\(askpass, privacy: .public)")
         AppLog.ssh.info("connect host=\(host.hostname, privacy: .private) user=\(host.username, privacy: .private)")
         let line = "connect terminal=\(terminal) askpass=\(askpass) fallback=\(used) host=\(host.hostname) user=\(host.username)"
-        write(line, namesFrom: [host])
+        write(line, namesFrom: namesIncludingLibrary([host]))
     }
 
     static func tunnel(event: String, port: Int, kind: String, exitCode: Int32?, detail: String, hosts: [SSHHost]) {
@@ -28,7 +29,7 @@ enum DiagnosticLog {
         AppLog.tunnel.info("tunnel \(event, privacy: .public) port=\(port, privacy: .public)")
         AppLog.tunnel.info("tunnel kind=\(kind, privacy: .public) exit=\(code, privacy: .public)")
         let tail = String(detail.prefix(500))
-        write("tunnel event=\(event) port=\(port) kind=\(kind) exit=\(code) \(tail)", namesFrom: hosts)
+        write("tunnel event=\(event) port=\(port) kind=\(kind) exit=\(code) \(tail)", namesFrom: namesIncludingLibrary(hosts))
     }
 
     static func askpassIssued() {
@@ -41,13 +42,22 @@ enum DiagnosticLog {
         write("sync failed \(message)", namesFrom: [])
     }
 
+    static func namesIncludingLibrary(_ hosts: [SSHHost]) -> [SSHHost] {
+        var combined = HostStoreModel.shared.library.hosts
+        for host in hosts where !combined.contains(where: { $0.id == host.id }) {
+            combined.append(host)
+        }
+        return combined
+    }
+
     static func write(_ line: String, namesFrom hosts: [SSHHost]) {
         guard SettingsStore.shared.diagnosticLogEnabled else { return }
         guard !UITestLaunch.isEnabled else { return }
+        let names = DiagnosticNames.collect(from: hosts)
         let redactor = DiagnosticRedactor(
             redactNames: SettingsStore.shared.diagnosticRedactNames,
-            hostnames: hosts.map(\.hostname),
-            usernames: hosts.map(\.username)
+            hostnames: names.hostnames,
+            usernames: names.usernames
         )
         let stamped = "\(isoNow()) \(redactor.redact(line))"
         do {
@@ -132,10 +142,10 @@ enum DiagnosticLog {
 
 @MainActor
 enum DiagnosticActions {
-    static func bundleInput(settings: SettingsStore, hosts: HostStoreModel) -> DiagnosticBundle.Input {
+    static func bundleInput(settings: SettingsStore, hosts: HostStoreModel) async -> DiagnosticBundle.Input {
         let info = Bundle.main.infoDictionary
         let ssh = settings.sshPath
-        let version = (try? sshVersion(ssh)) ?? ssh
+        let version = await Task.detached { sshVersion(ssh) }.value ?? ssh
         return DiagnosticBundle.Input(
             version: info?["CFBundleShortVersionString"] as? String ?? "dev",
             build: info?["CFBundleVersion"] as? String ?? "0",
@@ -160,16 +170,20 @@ enum DiagnosticActions {
         panel.nameFieldStringValue = "SSH-Bookmarks-diagnostics.zip"
         panel.prompt = String(localized: "Export")
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        let input = bundleInput(settings: settings, hosts: hosts)
-        let data = DiagnosticBundle.makeZIP(input, redactor: redactor(settings: settings, hosts: hosts))
-        try? data.write(to: url, options: .atomic)
+        Task { @MainActor in
+            let input = await bundleInput(settings: settings, hosts: hosts)
+            let data = DiagnosticBundle.makeZIP(input, redactor: redactor(settings: settings, hosts: hosts))
+            try? data.write(to: url, options: .atomic)
+        }
     }
 
     static func copy(settings: SettingsStore, hosts: HostStoreModel) {
-        let text = DiagnosticBundle.pasteboardText(
-            bundleInput(settings: settings, hosts: hosts), redactor: redactor(settings: settings, hosts: hosts))
-        NSPasteboard.general.clearContents()
-        NSPasteboard.general.setString(text, forType: .string)
+        Task { @MainActor in
+            let input = await bundleInput(settings: settings, hosts: hosts)
+            let text = DiagnosticBundle.pasteboardText(input, redactor: redactor(settings: settings, hosts: hosts))
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
     }
 
     static func revealLogFolder() -> String? {
@@ -180,7 +194,7 @@ enum DiagnosticActions {
         return nil
     }
 
-    private static func sshVersion(_ path: String) -> String? {
+    nonisolated private static func sshVersion(_ path: String) -> String? {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = ["-V"]
@@ -188,8 +202,32 @@ enum DiagnosticActions {
         process.standardError = pipe
         process.standardOutput = pipe
         guard (try? process.run()) != nil else { return nil }
-        process.waitUntilExit()
-        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        // 在主 actor 外持续排空管道，最多保留 4 KiB；包装程序挂起也不会无限等待。
+        let fd = pipe.fileHandleForReading.fileDescriptor
+        let flags = fcntl(fd, F_GETFL)
+        guard flags >= 0, fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0 else {
+            process.terminate()
+            return nil
+        }
+        defer { try? pipe.fileHandleForReading.close() }
+        var data = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        let deadline = ProcessInfo.processInfo.systemUptime + 1
+        while ProcessInfo.processInfo.systemUptime < deadline {
+            let count = buffer.withUnsafeMutableBytes { Darwin.read(fd, $0.baseAddress, $0.count) }
+            if count > 0 {
+                data.append(contentsOf: buffer.prefix(min(count, max(0, 4096 - data.count))))
+                continue
+            }
+            if count == 0 || (!process.isRunning && count < 0) { break }
+            if errno != EAGAIN && errno != EINTR { break }
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        if process.isRunning {
+            process.terminate()
+            // Process 尚未回收时 PID 不会被复用；只杀本次运行的包装程序。
+            if process.isRunning { _ = kill(process.processIdentifier, SIGKILL) }
+        }
         return String(data: data, encoding: .utf8)?.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }

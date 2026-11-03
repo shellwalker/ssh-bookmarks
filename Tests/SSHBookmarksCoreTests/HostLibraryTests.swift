@@ -18,13 +18,13 @@ final class HostLibraryTests: XCTestCase {
 
     func testSectionsOrder() {
         let s = makeLibrary().sections(matching: "")
-        XCTAssertEqual(s.count, 4)
-        XCTAssertEqual(s[0].kind, .favorites)
-        guard case .group(let g1) = s[1].kind, case .group(let g2) = s[2].kind else { return XCTFail() }
+        XCTAssertEqual(s.count, 3)
+        XCTAssertFalse(s.contains { $0.kind == .favorites })
+        guard case .group(let g1) = s[0].kind, case .group(let g2) = s[1].kind else { return XCTFail() }
         XCTAssertEqual(g1.name, "Production")
         XCTAssertEqual(g2.name, "Dev")
-        XCTAssertEqual(s[3].kind, .ungrouped)
-        XCTAssertEqual(s[1].hosts.map(\.label), ["API", "DB"])
+        XCTAssertEqual(s[2].kind, .ungrouped)
+        XCTAssertEqual(s[0].hosts.map(\.label), ["API", "DB"])
     }
 
     func testRecentSectionIsFirstAndHiddenWhileSearching() {
@@ -37,7 +37,9 @@ final class HostLibraryTests: XCTestCase {
         XCTAssertEqual(sections.first?.kind, .recent)
         XCTAssertEqual(sections.first?.hosts.map(\.label), ["Home NAS", "API"])
         XCTAssertEqual(sections.first?.id, "recent")
-        XCTAssertTrue(sections.contains { $0.kind == .favorites })
+        XCTAssertFalse(sections.contains { $0.kind == .favorites })
+        let production = sections.first { if case .group(let group) = $0.kind { return group.name == "Production" }; return false }
+        XCTAssertEqual(production?.hosts.map(\.label), ["DB"])
         XCTAssertFalse(lib.sections(matching: "api").contains { $0.kind == .recent })
 
         for index in lib.hosts.indices {

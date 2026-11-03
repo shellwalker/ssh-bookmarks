@@ -223,6 +223,7 @@ final class SSHBookmarksUITests: XCTestCase {
 
     func testQuickTunnelBadgeConflictAndHostKey() throws {
         let en = try launch(language: "en", appearance: "light")
+        XCTAssertTrue(en.app.staticTexts["15432 → 127.0.0.1:5432"].waitForExistence(timeout: 8))
         let toggle = marked(en.app, "tunnel.toggle.API.15432")
         XCTAssertTrue(toggle.waitForExistence(timeout: 8))
         toggle.click()
@@ -233,6 +234,21 @@ final class SSHBookmarksUITests: XCTestCase {
         let hosts = marked(en.app, id.hosts)
         XCTAssertTrue(hosts.waitForExistence(timeout: 10))
         let api = marked(hosts, "host.API")
+        XCTAssertTrue(api.waitForExistence(timeout: 5))
+        // SwiftUI 会把行的 identifier 复制到子元素上，macOS 上合并后的文字可能落在 label、title 或 value 里。
+        let apiMatches = en.app.descendants(matching: .any).matching(identifier: "host.API")
+        func mentionsProduction(_ element: XCUIElement) -> Bool {
+            [element.label, element.title, element.value as? String ?? ""].contains { $0.contains("Production") }
+        }
+        let showsGroup = NSPredicate { _, _ in
+            apiMatches.allElementsBoundByIndex.contains(where: mentionsProduction)
+                || apiMatches.descendants(matching: .staticText).matching(NSPredicate(format: "value CONTAINS 'Production'")).count > 0
+                || en.app.descendants(matching: .any).matching(identifier: "host.group.API").count > 0
+        }
+        let groupShown = expectation(for: showsGroup, evaluatedWith: nil)
+        if XCTWaiter().wait(for: [groupShown], timeout: 5) != .completed {
+            XCTFail("host row does not mention its group: \(hosts.debugDescription)")
+        }
         api.click()
         api.rightClick()
         chooseMenu(en.app, identifier: id.hostEdit, titles: ["Edit…"])
@@ -243,6 +259,8 @@ final class SSHBookmarksUITests: XCTestCase {
         en.app.terminate()
 
         let zhLight = try launch(language: "zh-Hans", appearance: "light")
+        shot(marked(zhLight.app, id.panel), "panel-favorite-zh-light", screen: "panel", appearance: "light", language: "zh-Hans")
+        XCTAssertTrue(zhLight.app.staticTexts["15432 → 127.0.0.1:5432"].waitForExistence(timeout: 8))
         marked(zhLight.app, "tunnel.toggle.API.15432").click()
         XCTAssertTrue(marked(zhLight.app, "panel.tunnelBadge").waitForExistence(timeout: 5))
         shot(marked(zhLight.app, id.panel), "panel-tunnels-zh-light", screen: "panel", appearance: "light", language: "zh-Hans")
@@ -268,6 +286,13 @@ final class SSHBookmarksUITests: XCTestCase {
         XCTAssertTrue(marked(hostKey.app, "tunnel.trust.API").waitForExistence(timeout: 5))
         shot(marked(hostKey.app, id.panel), "tunnel-hostkey-en-light", screen: "panel", appearance: "light", language: "en")
         hostKey.app.terminate()
+
+        let privilegedJSON = fixtureJSON().replacingOccurrences(of: "\"listenPort\": 15432", with: "\"listenPort\": 80")
+        let privileged = try launch(language: "en", appearance: "light", hostsJSON: privilegedJSON)
+        marked(privileged.app, "tunnel.toggle.API.80").click()
+        XCTAssertTrue(privileged.app.staticTexts["Listen on privileged port 80?"].waitForExistence(timeout: 5))
+        shot(marked(privileged.app, id.panel), "tunnel-privileged-en-light", screen: "panel", appearance: "light", language: "en")
+        privileged.app.terminate()
     }
 
     // MARK: - Launch

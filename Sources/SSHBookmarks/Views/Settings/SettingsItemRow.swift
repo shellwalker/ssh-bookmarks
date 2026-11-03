@@ -277,6 +277,8 @@ private struct AutomationPermissionRow: View {
     @EnvironmentObject private var settings: SettingsStore
     @State private var status: AutomationPermission.Status?
     @State private var checking = false
+    @State private var checkTask: Task<Void, Never>?
+    @State private var checkGeneration = UUID()
     let showsDivider: Bool
 
     var body: some View {
@@ -289,6 +291,11 @@ private struct AutomationPermissionRow: View {
         }
         .onAppear { check(ask: false) }
         .onChange(of: settings.terminal) { _, _ in check(ask: false) }
+        .onDisappear {
+            checkTask?.cancel()
+            checkGeneration = UUID()
+            checking = false
+        }
     }
 
     private var ghosttySupportsAppleScript: Bool {
@@ -297,12 +304,18 @@ private struct AutomationPermissionRow: View {
     }
 
     private func check(ask: Bool) {
+        checkTask?.cancel()
+        let generation = UUID()
+        checkGeneration = generation
         let terminal = settings.terminal
+        status = nil
         checking = true
-        Task {
+        checkTask = Task { @MainActor in
             let result = await AutomationPermission.check(terminal, ask: ask)
+            guard !Task.isCancelled, checkGeneration == generation, settings.terminal == terminal else { return }
             status = result
             checking = false
+            checkTask = nil
         }
     }
 
@@ -430,14 +443,33 @@ private struct SyncFolderRow: View {
     }
 
     var body: some View {
-        row(.syncFolder, subtitle: Text(verbatim: settings.resolvedSyncDirectory.path), showsDivider: showsDivider) {
-            HStack(spacing: 8) {
-                Button("Use iCloud Drive") {
-                    guard settings.syncFolderPath != nil else { return }
-                    folderConfirm = .iCloud
+        VStack(spacing: 0) {
+            HStack(alignment: .center, spacing: 16) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Sync Folder").font(.system(size: 13, weight: .medium))
+                    syncFolderTitle
+                        .font(.system(size: 12))
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Text(verbatim: settings.resolvedSyncDirectory.path)
+                        .font(.system(size: 11))
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .accessibilityIdentifier("settings.syncPath")
                 }
-                Button("Choose Folder…") { folderConfirm = .choose }
+                Spacer(minLength: 12)
+                HStack(spacing: 8) {
+                    Button("Use iCloud Drive") {
+                        guard settings.syncFolderPath != nil else { return }
+                        folderConfirm = .iCloud
+                    }
+                    Button("Choose Folder…") { folderConfirm = .choose }
+                }
             }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 11)
+            if showsDivider { Divider().padding(.leading, 14) }
         }
         .alert(
             "Change the sync folder?",
@@ -448,6 +480,14 @@ private struct SyncFolderRow: View {
         } message: {
             Text(LocalizedStringKey(syncFolderChangeWarning))
         }
+    }
+
+    private var syncFolderTitle: Text {
+        if settings.syncFolderPath == nil {
+            return Text("iCloud Drive/SSH Bookmarks")
+        }
+        let name = settings.resolvedSyncDirectory.lastPathComponent
+        return Text(verbatim: name)
     }
 
     private func applyFolderChange() {

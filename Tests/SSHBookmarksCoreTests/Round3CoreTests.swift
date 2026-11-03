@@ -198,6 +198,37 @@ final class Round3CoreTests: XCTestCase {
         XCTAssertEqual(TunnelOrphanDecision.decide(processAlive: false, startTimeMatches: true, executableMatches: true), .forget)
     }
 
+    func testReconnectStreakSurvivesRetriesAndResetsAfterStableUptimeOrAManualStart() {
+        XCTAssertEqual(TunnelFailureAccounting.afterManualStart(), 0)
+        XCTAssertEqual(TunnelFailureAccounting.stableUptime, 30)
+        var streak = 0
+        for expected in 1...5 {
+            let step = TunnelReducer.onExit(kind: .timedOut, reconnect: true, failuresSoFar: streak, runningCount: 1)
+            XCTAssertTrue(step.spawn, "retry \(expected)")
+            streak = TunnelFailureAccounting.carriedIntoRetry(step.failures)
+            XCTAssertEqual(streak, expected)
+        }
+        let stopped = TunnelReducer.onExit(kind: .timedOut, reconnect: true, failuresSoFar: streak, runningCount: 1)
+        XCTAssertFalse(stopped.spawn)
+        XCTAssertEqual(stopped.failures, 6)
+        XCTAssertEqual(TunnelFailureAccounting.afterUptime(29, current: streak), streak)
+        XCTAssertEqual(TunnelFailureAccounting.afterUptime(30, current: streak), 0)
+        XCTAssertEqual(TunnelFailureAccounting.afterManualStart(), 0)
+    }
+
+    func testRedactionIncludesJumpHostsAndTheirChain() {
+        let gateway = SSHHost(label: "gw", hostname: "gw.internal", username: "root")
+        let bastion = SSHHost(label: "bastion", hostname: "bastion.internal", username: "jump", jumpHost: "root@gw.internal")
+        let edge = SSHHost(label: "edge", hostname: "edge.internal", username: "deploy", jumpHost: "jump@bastion.internal:22")
+        let names = DiagnosticNames.collect(from: [edge, bastion, gateway])
+        let sample = "via bastion.internal and gw.internal as jump"
+        let redacted = DiagnosticRedactor(redactNames: true, hostnames: names.hostnames, usernames: names.usernames).redact(sample)
+        XCTAssertFalse(redacted.contains("bastion.internal"))
+        XCTAssertFalse(redacted.contains("gw.internal"))
+        XCTAssertFalse(redacted.contains("jump"))
+        XCTAssertTrue(names.hostnames.contains("edge.internal"))
+    }
+
     func testLocalPortProbeNoticesAHeldPort() {
         guard let held = LocalPortProbe.hold() else {
             XCTFail("could not bind an ephemeral port")

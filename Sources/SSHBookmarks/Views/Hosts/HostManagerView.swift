@@ -69,8 +69,11 @@ struct HostManagerView: View {
                     .filter { $0.id != host.id }
                     .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
             ) { saved in
-                hosts.save(saved)
+                guard hosts.save(saved) else {
+                    return hosts.lastError ?? L10n.format("Failed to save hosts file: %@", "")
+                }
                 selection = saved.id
+                return nil
             }
         }
         .alert("New Group", isPresented: $showingNewGroup) {

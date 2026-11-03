@@ -11,10 +11,11 @@ final class HostListCursorTests: XCTestCase {
         return HostLibrary(groups: [g], hosts: [a, b, c]).sections(matching: "")
     }
 
-    func testFavoriteAppearsTwiceWithDistinctIDs() {
+    func testFavoriteAppearsOnceWithAStarOnly() {
         let cursor = HostListCursor(sections: makeSections())
-        XCTAssertEqual(cursor.entries.map(\.host.label), ["a", "a", "b", "c"])
-        XCTAssertEqual(Set(cursor.entries.map(\.id)).count, 4)
+        XCTAssertEqual(cursor.entries.map(\.host.label), ["a", "b", "c"])
+        XCTAssertEqual(cursor.entries.filter { $0.host.isFavorite }.count, 1)
+        XCTAssertEqual(Set(cursor.entries.map(\.id)).count, 3)
         XCTAssertEqual(cursor.selectedIndex, 0)
     }
 
@@ -23,26 +24,24 @@ final class HostListCursorTests: XCTestCase {
         XCTAssertEqual(cursor.handle(.up), .select(cursor.entries[0].id))
         XCTAssertEqual(cursor.selectedIndex, 0)
         _ = cursor.handle(.down)
-        _ = cursor.handle(.down)
         XCTAssertEqual(cursor.selectedEntry?.host.label, "b")
         _ = cursor.handle(.down)
         _ = cursor.handle(.down)
-        XCTAssertEqual(cursor.selectedIndex, 3)
+        XCTAssertEqual(cursor.selectedIndex, 2)
         _ = cursor.handle(.home)
         XCTAssertEqual(cursor.selectedIndex, 0)
         _ = cursor.handle(.end)
-        XCTAssertEqual(cursor.selectedIndex, 3)
+        XCTAssertEqual(cursor.selectedIndex, 2)
         cursor.pageSize = 2
         _ = cursor.handle(.pageUp)
-        XCTAssertEqual(cursor.selectedIndex, 1)
+        XCTAssertEqual(cursor.selectedIndex, 0)
         _ = cursor.handle(.pageDown)
         _ = cursor.handle(.pageDown)
-        XCTAssertEqual(cursor.selectedIndex, 3)
+        XCTAssertEqual(cursor.selectedIndex, 2)
     }
 
     func testEnterConnectsSelectedAndEscapeCloses() {
         var cursor = HostListCursor(sections: makeSections())
-        _ = cursor.handle(.down)
         _ = cursor.handle(.down)
         guard case .connect(let host) = cursor.handle(.enter) else { return XCTFail() }
         XCTAssertEqual(host.label, "b")
