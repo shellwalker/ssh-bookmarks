@@ -62,12 +62,19 @@ struct HostManagerView: View {
             }
         }
         .sheet(item: $editingHost) { host in
+            let savedBaseline = hosts.host(id: host.id)
             HostEditorView(
                 host: host,
                 outline: hosts.library.groupOutline(),
                 otherHosts: hosts.library.hosts
                     .filter { $0.id != host.id }
-                    .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending }
+                    .sorted { $0.label.localizedStandardCompare($1.label) == .orderedAscending },
+                onRollback: {
+                    guard hosts.restoreHost(savedBaseline, hostID: host.id) else {
+                        return hosts.lastError ?? L10n.format("Failed to save hosts file: %@", "")
+                    }
+                    return nil
+                }
             ) { saved in
                 guard hosts.save(saved) else {
                     return hosts.lastError ?? L10n.format("Failed to save hosts file: %@", "")
