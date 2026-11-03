@@ -55,7 +55,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationWillTerminate(_ notification: Notification) {
-        TunnelController.shared.stopAll()
+        TunnelController.shared.terminateAll()
     }
 
     /// 菜单栏应用：关闭最后一个窗口不退出。

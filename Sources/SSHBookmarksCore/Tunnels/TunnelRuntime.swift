@@ -144,3 +144,13 @@ public enum TunnelReducer {
         return TunnelStep(phase: .failed(kind), spawn: false, stop: false, retryAfter: nil, failures: failures)
     }
 }
+
+/// 重试时只使用当前库，不能继续使用启动时捕获的站点和开关。
+public enum TunnelRetryTarget {
+    public static func current(in library: HostLibrary, hostID: UUID, forwardID: UUID) -> (host: SSHHost, forward: PortForward)? {
+        guard let host = library.hosts.first(where: { $0.id == hostID }),
+            let forward = host.portForwards.first(where: { $0.id == forwardID }),
+            forward.kind == .local, forward.quickToggle, forward.reconnect else { return nil }
+        return (host, forward)
+    }
+}

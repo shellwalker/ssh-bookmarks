@@ -1,3 +1,5 @@
+import Combine
+import Darwin
 import Foundation
 import SSHBookmarksCore
 
@@ -15,6 +17,7 @@ struct TunnelSession: Identifiable, Equatable {
     var startedAt: Date?
     var sshPath: String
     var reconnect: Bool
+    var generation: Int
 
     var displayAddress: String {
         let host = bindAddress.flatMap { TunnelAddress.isLoopback($0) ? $0 : nil } ?? "127.0.0.1"
@@ -83,6 +86,7 @@ final class TunnelController: ObservableObject {
     private var stderrTail: [UUID: String] = [:]
     private var readers: [UUID: FileHandle] = [:]
     private var launchGeneration: [UUID: Int] = [:]
+    private var ownedGroups: [pid_t: PIDRecord] = [:]
 
     var runningCount: Int {
         sessions.values.filter { $0.phase == .running || $0.phase == .starting }.count
@@ -119,7 +123,38 @@ final class TunnelController: ObservableObject {
     }
 
     func stopAll() {
-        for id in sessions.keys { stop(id, userInitiated: true) }
+        for id in Array(sessions.keys) { stop(id, userInitiated: true) }
+    }
+
+    func stop(hostID: UUID) {
+        if pendingPrompt?.host.id == hostID { pendingPrompt = nil }
+        for session in Array(sessions.values) where session.hostID == hostID {
+            stop(session.id, userInitiated: true)
+        }
+    }
+
+    /// 退出通知返回后队列就可能停止；在总计有界的等待内完成 TERM / KILL。
+    func terminateAll() {
+        var records = loadPIDs()
+        for record in ownedGroups.values {
+            records.removeAll { $0.pid == record.pid }
+            records.append(record)
+        }
+        for id in Array(launchGeneration.keys) { launchGeneration[id, default: 0] += 1 }
+        for record in records where matches(record) || ownsRemainingGroup(record) { TunnelSpawn.signalGroup(record.pid, SIGTERM) }
+        let deadline = ProcessInfo.processInfo.systemUptime + 1.3
+        while ProcessInfo.processInfo.systemUptime < deadline && records.contains(where: { TunnelSpawn.groupIsAlive($0.pid) }) {
+            Thread.sleep(forTimeInterval: 0.02)
+        }
+        // 再核对进程启动时间和路径，不向复用后的 PID 发信号。无法确认的保留到下次启动。
+        for record in records where TunnelSpawn.groupIsAlive(record.pid) && (matches(record) || ownsRemainingGroup(record)) {
+            TunnelSpawn.signalGroup(record.pid, SIGKILL)
+        }
+        let killDeadline = ProcessInfo.processInfo.systemUptime + 0.2
+        while ProcessInfo.processInfo.systemUptime < killDeadline && records.contains(where: { TunnelSpawn.groupIsAlive($0.pid) }) {
+            Thread.sleep(forTimeInterval: 0.01)
+        }
+        save(records.filter { TunnelSpawn.groupIsAlive($0.pid) })
     }
 
     func trustInTerminal(host: SSHHost, settings: SettingsStore) {
@@ -134,7 +169,17 @@ final class TunnelController: ObservableObject {
             pendingPrompt = prompt
             return
         }
-        let running = sessions.values.filter { $0.phase == .running || $0.phase == .starting }.count
+        let argv: [String]
+        do {
+            argv = try SSHCommandBuilder(sshPath: SettingsStore.shared.sshPath).tunnelArguments(for: host, forward: forward)
+        } catch {
+            HostStoreModel.shared.lastError = error.localizedDescription
+            return
+        }
+        launchGeneration[forward.id, default: 0] += 1
+        let generation = launchGeneration[forward.id, default: 0]
+        stderrTail[forward.id] = ""
+        let running = sessions.values.filter { $0.id != forward.id && ($0.phase == .running || $0.phase == .starting) }.count
         let busy = !LocalPortProbe.isFree(host: forward.bindAddress ?? "127.0.0.1", port: forward.listenPort)
             || TunnelPortConflict.clashes(listenPort: forward.listenPort, with: otherPorts(except: forward.id))
         let step = TunnelReducer.onStart(runningCount: running, portBusy: busy)
@@ -143,7 +188,7 @@ final class TunnelController: ObservableObject {
             listenPort: forward.listenPort, bindAddress: forward.bindAddress, phase: step.phase,
             message: "",
             failures: manual ? TunnelFailureAccounting.afterManualStart() : TunnelFailureAccounting.carriedIntoRetry(inheritedFailures),
-            pid: nil, startedAt: nil, sshPath: "", reconnect: forward.reconnect
+            pid: nil, startedAt: nil, sshPath: "", reconnect: forward.reconnect, generation: generation
         )
         if !step.spawn {
             session.message = message(for: step.phase, port: forward.listenPort)
@@ -166,17 +211,16 @@ final class TunnelController: ObservableObject {
         session.phase = .starting
         sessions[forward.id] = session
         do {
-            let argv = try SSHCommandBuilder(sshPath: SettingsStore.shared.sshPath).tunnelArguments(for: host, forward: forward)
             let env = try childEnvironment(host: host)
             let child = try TunnelSpawn.start(argv: argv, environment: env)
             session.pid = child.pid
-            session.startedAt = Date()
+            session.startedAt = TunnelSpawn.startTime(child.pid) ?? Date()
             session.sshPath = argv[0]
             session.phase = .running
             sessions[forward.id] = session
             remember(session)
-            watch(child.stderr, forwardID: forward.id, host: host)
-            watchExit(pid: child.pid, forwardID: forward.id, host: host)
+            watch(child.stderr, forwardID: forward.id, pid: child.pid, generation: generation)
+            watchExit(pid: child.pid, forwardID: forward.id, generation: generation, host: host)
             scheduleStableReset(forwardID: forward.id, pid: child.pid)
             DiagnosticLog.tunnel(event: "start", port: forward.listenPort, kind: "local", exitCode: nil, detail: "", hosts: [host])
         } catch TunnelLaunchError.missingPassword {
@@ -195,24 +239,41 @@ final class TunnelController: ObservableObject {
 
     private func stop(_ id: UUID, userInitiated: Bool) {
         guard var session = sessions[id] else { return }
+        launchGeneration[id, default: 0] += 1
+        let generation = launchGeneration[id, default: 0]
+        let childGeneration = session.generation
         if let pid = session.pid {
-            TunnelSpawn.signalGroup(pid, SIGTERM)
-            DispatchQueue.global().asyncAfter(deadline: .now() + 2) {
-                if TunnelSpawn.isAlive(pid) { TunnelSpawn.signalGroup(pid, SIGKILL) }
+            let startedAt = session.startedAt
+            let sshPath = session.sshPath
+            let actual = TunnelSpawn.startTime(pid)
+            let sameLeader = startedAt.map { expected in
+                actual.map { abs($0.timeIntervalSince(expected)) < 0.00001 } ?? false
+            } == true && TunnelSpawn.executablePath(pid) == sshPath
+            if sameLeader || (actual == nil && !TunnelSpawn.isAlive(pid) && TunnelSpawn.groupIsAlive(pid)) {
+                TunnelSpawn.signalGroup(pid, SIGTERM)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.3) { [weak self] in
+                guard let self, self.launchGeneration[id] == generation, self.sessions[id]?.pid == pid else { return }
+                let actual = TunnelSpawn.startTime(pid)
+                let sameLeader = startedAt.map { expected in
+                    actual.map { abs($0.timeIntervalSince(expected)) < 0.00001 } ?? false
+                } == true && TunnelSpawn.executablePath(pid) == sshPath
+                // 组长已回收时仍可清理其子进程：只发负 PID，存活进程组持有组号。
+                let remainingGroup = actual == nil && !TunnelSpawn.isAlive(pid) && TunnelSpawn.groupIsAlive(pid)
+                if sameLeader || remainingGroup { TunnelSpawn.signalGroup(pid, SIGKILL) }
+                if !TunnelSpawn.groupIsAlive(pid) { self.forget(pid: pid, forwardID: id, generation: childGeneration) }
             }
         }
         readers[id]?.readabilityHandler = nil
         readers[id] = nil
         session.phase = .idle
-        session.pid = nil
         session.message = ""
         session.failures = userInitiated ? 0 : session.failures
-        sessions[id] = userInitiated ? nil : session
-        forget(id)
+        sessions[id] = session
         DiagnosticLog.tunnel(event: "stop", port: session.listenPort, kind: "local", exitCode: nil, detail: "", hosts: [])
     }
 
-    private func watch(_ handle: FileHandle, forwardID: UUID, host: SSHHost) {
+    private func watch(_ handle: FileHandle, forwardID: UUID, pid: pid_t, generation: Int) {
         readers[forwardID] = handle
         handle.readabilityHandler = { [weak self] file in
             let data = file.availableData
@@ -222,51 +283,63 @@ final class TunnelController: ObservableObject {
             }
             let text = String(data: data, encoding: .utf8) ?? ""
             Task { @MainActor in
-                guard let self else { return }
+                guard let self, self.sessions[forwardID]?.pid == pid, self.launchGeneration[forwardID] == generation else { return }
                 let existing = self.stderrTail[forwardID, default: ""]
                 self.stderrTail[forwardID] = String((existing + text).suffix(2048))
             }
         }
     }
 
-    private func watchExit(pid: pid_t, forwardID: UUID, host: SSHHost) {
+    private func watchExit(pid: pid_t, forwardID: UUID, generation: Int, host: SSHHost) {
         DispatchQueue.global().async { [weak self] in
             var status: Int32 = 0
-            waitpid(pid, &status, 0)
+            var result: pid_t
+            repeat { result = waitpid(pid, &status, 0) } while result == -1 && errno == EINTR
+            guard result == pid else { return }
             let code = (status & 0x7F) == 0 ? (status >> 8) & 0xFF : status
             Task { @MainActor in
-                self?.handleExit(forwardID: forwardID, host: host, exitCode: Int32(code))
+                self?.handleExit(forwardID: forwardID, pid: pid, generation: generation, host: host, exitCode: Int32(code))
             }
         }
     }
 
-    private func handleExit(forwardID: UUID, host: SSHHost, exitCode: Int32) {
-        guard var session = sessions[forwardID], session.pid != nil else { return }
+    private func handleExit(forwardID: UUID, pid: pid_t, generation: Int, host: SSHHost, exitCode: Int32) {
+        if !TunnelSpawn.groupIsAlive(pid) { forget(pid: pid, forwardID: forwardID, generation: generation) }
+        guard var session = sessions[forwardID], session.pid == pid, session.generation == generation else { return }
+        if session.phase == .idle {
+            if !TunnelSpawn.groupIsAlive(pid) { session.pid = nil }
+            sessions[forwardID] = session
+            return
+        }
+        guard launchGeneration[forwardID] == generation else { return }
+        readers[forwardID]?.readabilityHandler = nil
+        readers[forwardID] = nil
         let kind = TunnelFailureClassifier.classify(stderr: stderrTail[forwardID] ?? "", exitCode: exitCode)
-        let running = sessions.values.filter { $0.phase == .running || $0.phase == .starting }.count
+        let running = sessions.values.filter { $0.id != forwardID && ($0.phase == .running || $0.phase == .starting) }.count
         let step = TunnelReducer.onExit(kind: kind, reconnect: session.reconnect, failuresSoFar: session.failures, runningCount: running)
         session.failures = step.failures
         session.phase = step.phase
         session.pid = nil
         session.message = message(for: step.phase, port: session.listenPort)
         sessions[forwardID] = session
-        forget(forwardID)
         DiagnosticLog.tunnel(
             event: "exit", port: session.listenPort, kind: "\(kind)", exitCode: exitCode,
             detail: stderrTail[forwardID] ?? "", hosts: [host]
         )
         guard step.spawn, let delay = step.retryAfter else { return }
-        let forward = host.portForwards.first { $0.id == forwardID }
-        guard let forward else { return }
+        let hostID = session.hostID
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            guard self?.sessions[forwardID]?.phase == .starting else { return }
-            self?.start(
-                host: host, forward: forward, inheritedFailures: step.failures, manual: false, acknowledged: true)
+            guard let self, self.launchGeneration[forwardID] == generation,
+                self.sessions[forwardID]?.phase == .starting else { return }
+            guard let target = TunnelRetryTarget.current(in: HostStoreModel.shared.library, hostID: hostID, forwardID: forwardID) else {
+                self.sessions[forwardID] = nil
+                return
+            }
+            self.start(host: target.host, forward: target.forward, inheritedFailures: step.failures, manual: false, acknowledged: true)
         }
     }
 
     private func scheduleStableReset(forwardID: UUID, pid: pid_t) {
-        launchGeneration[forwardID, default: 0] += 1
         let generation = launchGeneration[forwardID, default: 0]
         DispatchQueue.main.asyncAfter(deadline: .now() + TunnelFailureAccounting.stableUptime) { [weak self] in
             guard let self, self.launchGeneration[forwardID] == generation else { return }
@@ -294,7 +367,9 @@ final class TunnelController: ObservableObject {
             throw TunnelLaunchError.missingPassword
         }
         guard let executable = Bundle.main.executablePath else { throw TunnelSpawnError.spawn(ENOENT) }
-        let token = try AskpassTokenFile.issue(hostID: host.id, fileURL: AskpassPaths.tokenFileURL(), now: Date())
+        let token = try AskpassTokenFile.issue(
+            hostID: host.id, username: host.username.trimmingCharacters(in: .whitespaces),
+            hostname: host.hostname.trimmingCharacters(in: .whitespaces), fileURL: AskpassPaths.tokenFileURL(), now: Date())
         DiagnosticLog.askpassIssued()
         env["SSH_ASKPASS"] = executable
         env["SSH_ASKPASS_REQUIRE"] = "force"
@@ -337,6 +412,7 @@ final class TunnelController: ObservableObject {
         var forwardID: UUID
         var listenPort: Int
         var sshPath: String
+        var generation: Int?
     }
 
     private func pidURL() -> URL {
@@ -345,35 +421,44 @@ final class TunnelController: ObservableObject {
 
     private func remember(_ session: TunnelSession) {
         guard let pid = session.pid, let started = session.startedAt else { return }
-        var records = loadPIDs().filter { $0.forwardID != session.id }
-        records.append(
-            PIDRecord(
-                pid: pid, startedAt: started, hostID: session.hostID, forwardID: session.id,
-                listenPort: session.listenPort, sshPath: session.sshPath
-            )
-        )
+        let record = PIDRecord(
+            pid: pid, startedAt: started, hostID: session.hostID, forwardID: session.id,
+            listenPort: session.listenPort, sshPath: session.sshPath, generation: session.generation)
+        ownedGroups[pid] = record
+        var records = loadPIDs().filter { $0.pid != pid }
+        records.append(record)
         save(records)
     }
 
-    private func forget(_ id: UUID) {
-        save(loadPIDs().filter { $0.forwardID != id })
+    private func forget(pid: pid_t, forwardID: UUID, generation: Int) {
+        if ownedGroups[pid]?.forwardID == forwardID && ownedGroups[pid]?.generation == generation {
+            ownedGroups[pid] = nil
+        }
+        save(loadPIDs().filter { !($0.pid == pid && $0.forwardID == forwardID && $0.generation == generation) })
+    }
+
+    private func ownsRemainingGroup(_ record: PIDRecord) -> Bool {
+        // 组长退出后，当前应用仍记得自己创建的组；组号在最后一个成员退出前不会释放。
+        guard let owned = ownedGroups[record.pid], owned.forwardID == record.forwardID,
+            owned.startedAt == record.startedAt, owned.generation == record.generation else { return false }
+        return !TunnelSpawn.isAlive(record.pid) && TunnelSpawn.groupIsAlive(record.pid)
+    }
+
+    private func matches(_ record: PIDRecord) -> Bool {
+        guard let started = TunnelSpawn.startTime(record.pid) else { return false }
+        // PID 文件用 ISO 8601 保存，小数秒会丢失；同一秒内同路径的 PID 复用可以忽略。
+        return abs(started.timeIntervalSince(record.startedAt)) < 1 && TunnelSpawn.executablePath(record.pid) == record.sshPath
     }
 
     private func reapOrphans() {
         var kept: [PIDRecord] = []
         for record in loadPIDs() {
-            let alive = TunnelSpawn.isAlive(record.pid)
-            let started = TunnelSpawn.startTime(record.pid)
-            let matchesTime = started.map { abs($0.timeIntervalSince(record.startedAt)) < 2 } ?? false
-            let path = TunnelSpawn.executablePath(record.pid)
-            let action = TunnelOrphanDecision.decide(
-                processAlive: alive, startTimeMatches: matchesTime, executableMatches: path == record.sshPath)
-            if action == .terminate {
-                TunnelSpawn.signalGroup(record.pid, SIGTERM)
-            }
-            _ = kept
+            guard TunnelSpawn.groupIsAlive(record.pid) else { continue }
+            if matches(record) { TunnelSpawn.signalGroup(record.pid, SIGTERM) }
+            // 身份无法确认或 TERM 后尚未退出都留存，不能丢失监管记录。
+            if TunnelSpawn.groupIsAlive(record.pid) { kept.append(record) }
         }
-        save([])
+        save(kept)
     }
 
     private func loadPIDs() -> [PIDRecord] {

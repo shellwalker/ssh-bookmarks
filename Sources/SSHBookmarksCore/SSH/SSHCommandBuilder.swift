@@ -157,7 +157,12 @@ public struct SSHCommandBuilder: Sendable {
         guard !hostname.isEmpty else { throw SSHCommandError.emptyHostname }
         guard Self.isValidHostname(hostname) else { throw SSHCommandError.invalidHostname(hostname) }
 
-        var args = [sshPath, "-N", "-o", "ExitOnForwardFailure=yes", "-o", "StrictHostKeyChecking=yes"]
+        // 覆盖 ssh_config 中的后台化和复用设置，保证受监管 PID 就是隧道进程组长。
+        var args = [
+            sshPath, "-N", "-o", "ForkAfterAuthentication=no", "-o", "ControlMaster=no",
+            "-o", "ControlPath=none", "-o", "ControlPersist=no",
+            "-o", "ExitOnForwardFailure=yes", "-o", "StrictHostKeyChecking=yes",
+        ]
         if host.authMethod != .password {
             args += ["-o", "BatchMode=yes"]
         }
@@ -186,7 +191,8 @@ public struct SSHCommandBuilder: Sendable {
             args += ["-o", "ForwardAgent=yes"]
         }
         for option in host.extraOptions {
-            guard Self.isValidOptionKey(option.key), Self.isValidOptionValue(option.value) else {
+            guard Self.isValidOptionKey(option.key), Self.isValidOptionValue(option.value),
+                !Self.tunnelBlockedOptionKeys.contains(option.key.lowercased()) else {
                 throw SSHCommandError.invalidOption(option.key)
             }
             args += ["-o", "\(option.key)=\(option.value)"]
@@ -223,7 +229,13 @@ public struct SSHCommandBuilder: Sendable {
     /// 用户名：POSIX 可移植用户名字符，外加 `@`（AD / 邮箱式账号）。
     private static let usernameScalars = asciiAlphanumerics.union(ascii("._-@"))
 
-    /// 这些选项会在本机执行命令或加载代码，不允许通过站点的“额外选项”设置（需要的话请写进 ~/.ssh/config）。
+    /// 后台隧道不能自行 fork、复用其他连接或改变会话类型。交互连接仍可使用这些选项。
+    private static let tunnelBlockedOptionKeys: Set<String> = [
+        "forkafterauthentication", "controlmaster", "controlpath", "controlpersist", "sessiontype",
+        "remotecommand", "requesttty", "stdinnull", "stdioforward", "clearallforwardings",
+    ]
+
+    /// 这些选项会在本机执行命令或加载代码，不允许通过站点的“额外选项”设置。
     static let blockedOptionKeys: Set<String> = [
         "proxycommand", "localcommand", "permitlocalcommand", "knownhostscommand",
         "include", "match", "pkcs11provider", "securitykeyprovider",
@@ -313,7 +325,8 @@ public struct SSHCommandBuilder: Sendable {
         guard validPort(f.listenPort), validAddr(f.bindAddress) else {
             throw SSHCommandError.invalidPortForward("listen \(f.listenPort)")
         }
-        let bind = f.bindAddress.map { "\($0):" } ?? ""
+        func address(_ value: String) -> String { value.contains(":") ? "[\(value)]" : value }
+        let bind = f.bindAddress.map { "\(address($0)):" } ?? ""
         switch f.kind {
         case .dynamic:
             return ["-D", "\(bind)\(f.listenPort)"]
@@ -322,7 +335,7 @@ public struct SSHCommandBuilder: Sendable {
                 throw SSHCommandError.invalidPortForward("destination")
             }
             let flag = f.kind == .local ? "-L" : "-R"
-            return [flag, "\(bind)\(f.listenPort):\(dh):\(f.destinationPort!)"]
+            return [flag, "\(bind)\(f.listenPort):\(address(dh)):\(f.destinationPort!)"]
         }
     }
 

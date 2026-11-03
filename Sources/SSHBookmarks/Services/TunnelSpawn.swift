@@ -26,7 +26,16 @@ enum TunnelSpawn {
 
         var pipes: [Int32] = [0, 0]
         guard pipe(&pipes) == 0 else { throw TunnelSpawnError.spawn(errno) }
-        let devnull = open("/dev/null", O_RDWR)
+        // dup2 到标准描述符后会清掉 CLOEXEC，其他描述符不跨 exec 泄漏。
+        for fd in pipes {
+            guard fcntl(fd, F_SETFD, FD_CLOEXEC) != -1 else {
+                let code = errno
+                close(pipes[0])
+                close(pipes[1])
+                throw TunnelSpawnError.spawn(code)
+            }
+        }
+        let devnull = open("/dev/null", O_RDWR | O_CLOEXEC)
         posix_spawn_file_actions_adddup2(&actions, pipes[1], STDERR_FILENO)
         posix_spawn_file_actions_adddup2(&actions, pipes[1], STDOUT_FILENO)
         if devnull >= 0 {
@@ -64,11 +73,15 @@ enum TunnelSpawn {
 
     static func signalGroup(_ pid: pid_t, _ signal: Int32) {
         _ = kill(-pid, signal)
-        _ = kill(pid, signal)
+
     }
 
     static func isAlive(_ pid: pid_t) -> Bool {
-        kill(pid, 0) == 0
+        kill(pid, 0) == 0 || errno == EPERM
+    }
+
+    static func groupIsAlive(_ pid: pid_t) -> Bool {
+        kill(-pid, 0) == 0 || errno == EPERM
     }
 
     static func executablePath(_ pid: pid_t) -> String? {
@@ -82,6 +95,6 @@ enum TunnelSpawn {
         var info = proc_bsdinfo()
         let size = proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &info, Int32(MemoryLayout<proc_bsdinfo>.size))
         guard size > 0 else { return nil }
-        return Date(timeIntervalSince1970: TimeInterval(info.pbi_start_tvsec))
+        return Date(timeIntervalSince1970: TimeInterval(info.pbi_start_tvsec) + TimeInterval(info.pbi_start_tvusec) / 1_000_000)
     }
 }
