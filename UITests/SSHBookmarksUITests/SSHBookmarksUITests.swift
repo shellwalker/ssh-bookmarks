@@ -235,15 +235,20 @@ final class SSHBookmarksUITests: XCTestCase {
         XCTAssertTrue(hosts.waitForExistence(timeout: 10))
         let api = marked(hosts, "host.API")
         XCTAssertTrue(api.waitForExistence(timeout: 5))
-        // SwiftUI 会把行的 identifier 复制到子元素上，firstMatch 可能是没有标签的头像；在所有匹配里找分组名。
-        let apiMatches = hosts.descendants(matching: .any).matching(identifier: "host.API")
+        // SwiftUI 会把行的 identifier 复制到子元素上，macOS 上合并后的文字可能落在 label、title 或 value 里。
+        let apiMatches = en.app.descendants(matching: .any).matching(identifier: "host.API")
+        func mentionsProduction(_ element: XCUIElement) -> Bool {
+            [element.label, element.title, element.value as? String ?? ""].contains { $0.contains("Production") }
+        }
         let showsGroup = NSPredicate { _, _ in
-            apiMatches.allElementsBoundByIndex.contains { $0.label.contains("Production") }
-                || apiMatches.staticTexts["Production"].exists
-                || hosts.staticTexts.matching(identifier: "host.group.API").firstMatch.exists
+            apiMatches.allElementsBoundByIndex.contains(where: mentionsProduction)
+                || apiMatches.descendants(matching: .staticText).matching(NSPredicate(format: "value CONTAINS 'Production'")).count > 0
+                || en.app.descendants(matching: .any).matching(identifier: "host.group.API").count > 0
         }
         let groupShown = expectation(for: showsGroup, evaluatedWith: nil)
-        wait(for: [groupShown], timeout: 5)
+        if XCTWaiter().wait(for: [groupShown], timeout: 5) != .completed {
+            XCTFail("host row does not mention its group: \(hosts.debugDescription)")
+        }
         api.click()
         api.rightClick()
         chooseMenu(en.app, identifier: id.hostEdit, titles: ["Edit…"])
