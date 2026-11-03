@@ -70,11 +70,11 @@ public struct DiagnosticRedactor: Equatable, Sendable {
     private func redactAssignments(_ text: String) -> String {
         var result = text
         let patterns = [
-            #"(?i)((?:password|passwd|secret)\s*=\s*)\S+"#,
-            #"(?i)(--password\s+)\S+"#,
-            #"(?i)(sshpass\s+-p\s+)\S+"#,
-            #"((?:SSHBOOKMARKS_ASKPASS_TOKEN|MENUSH_ASKPASS_TOKEN)\s*=\s*)\S+"#,
-            #"(SSH_ASKPASS\s*=\s*)\S+"#,
+            #"(?i)((?:password|passwd|secret)\s*=\s*)(?:'[^']*'|"[^"]*"|\S+)"#,
+            #"(?i)(--password\s+)(?:'[^']*'|"[^"]*"|\S+)"#,
+            #"(?i)(sshpass\s+-p\s+)(?:'[^']*'|"[^"]*"|\S+)"#,
+            #"((?:SSHBOOKMARKS_ASKPASS_TOKEN|MENUSH_ASKPASS_TOKEN)\s*=\s*)(?:'[^']*'|"[^"]*"|\S+)"#,
+            #"(SSH_ASKPASS\s*=\s*)(?:'[^']*'|"[^"]*"|\S+)"#,
         ]
         for pattern in patterns {
             result = replacing(result, pattern: pattern, template: "$1[redacted]")
@@ -93,18 +93,20 @@ public struct DiagnosticRedactor: Equatable, Sendable {
     }
 
     private func redactPrivateKeys(_ text: String) -> String {
-        replacing(
+        // 先处理 BEGIN，避免孤立 END 的规则从文本开头吞掉完整密钥之前的诊断信息。
+        let result = replacing(
             text,
-            pattern: "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----",
+            pattern: "-----BEGIN [A-Z ]*PRIVATE KEY-----[\\s\\S]*?(?:-----END [A-Z ]*PRIVATE KEY-----|$)",
             template: "[private-key]"
         )
+        return replacing(result, pattern: "^[\\s\\S]*?-----END [A-Z ]*PRIVATE KEY-----", template: "[private-key]")
     }
 
     private func redactKnownNames(_ text: String) -> String {
         var result = text
         let names = (hostnames + usernames).filter { $0.count >= 2 }.sorted { $0.count > $1.count }
         for name in names {
-            result = result.replacingOccurrences(of: name, with: nameIsUser(name) ? "user" : "host")
+            result = result.replacingOccurrences(of: name, with: nameIsUser(name) ? "user" : "host", options: .caseInsensitive)
         }
         return result
     }

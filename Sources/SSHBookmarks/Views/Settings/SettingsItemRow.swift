@@ -277,6 +277,8 @@ private struct AutomationPermissionRow: View {
     @EnvironmentObject private var settings: SettingsStore
     @State private var status: AutomationPermission.Status?
     @State private var checking = false
+    @State private var checkTask: Task<Void, Never>?
+    @State private var checkGeneration = UUID()
     let showsDivider: Bool
 
     var body: some View {
@@ -289,6 +291,11 @@ private struct AutomationPermissionRow: View {
         }
         .onAppear { check(ask: false) }
         .onChange(of: settings.terminal) { _, _ in check(ask: false) }
+        .onDisappear {
+            checkTask?.cancel()
+            checkGeneration = UUID()
+            checking = false
+        }
     }
 
     private var ghosttySupportsAppleScript: Bool {
@@ -297,12 +304,18 @@ private struct AutomationPermissionRow: View {
     }
 
     private func check(ask: Bool) {
+        checkTask?.cancel()
+        let generation = UUID()
+        checkGeneration = generation
         let terminal = settings.terminal
+        status = nil
         checking = true
-        Task {
+        checkTask = Task { @MainActor in
             let result = await AutomationPermission.check(terminal, ask: ask)
+            guard !Task.isCancelled, checkGeneration == generation, settings.terminal == terminal else { return }
             status = result
             checking = false
+            checkTask = nil
         }
     }
 
