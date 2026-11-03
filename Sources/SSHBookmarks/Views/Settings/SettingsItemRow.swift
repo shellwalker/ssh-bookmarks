@@ -70,7 +70,10 @@ private struct AppearanceRow: View {
 
     var body: some View {
         row(.appearance, showsDivider: showsDivider) {
-            SegmentedSetting(selection: $settings.appearance, options: AppearanceMode.allCases) { $0.title }
+            SegmentedSetting(
+                label: LocalizedStringKey(SettingsItemID.appearance.titleKey), selection: $settings.appearance,
+                options: AppearanceMode.allCases
+            ) { $0.title }
         }
     }
 }
@@ -90,7 +93,7 @@ private struct LanguageRow: View {
                 if settings.languageChangePending {
                     Button("Restart Now") { settings.relaunch() }
                 }
-                Picker("", selection: $settings.language) {
+                Picker(LocalizedStringKey(SettingsItemID.language.titleKey), selection: $settings.language) {
                     ForEach(AppLanguage.allCases) { Text($0.title).tag($0) }
                 }
                 .labelsHidden()
@@ -112,6 +115,7 @@ private struct LaunchAtLoginRow: View {
                     Button("Open Login Items") { loginItem.openSystemSettings() }
                 }
                 SegmentedSetting(
+                    label: LocalizedStringKey(SettingsItemID.launchAtLogin.titleKey),
                     selection: Binding(get: { OnOff(loginItem.isEnabled) }, set: { loginItem.setEnabled($0.isOn) }),
                     options: OnOff.allCases
                 ) { $0.title }
@@ -139,7 +143,10 @@ private struct DockIconRow: View {
 
     var body: some View {
         row(.dockIcon, showsDivider: showsDivider) {
-            SegmentedSetting(selection: $settings.dockIconMode, options: DockIconMode.allCases) { $0.title }
+            SegmentedSetting(
+                label: LocalizedStringKey(SettingsItemID.dockIcon.titleKey), selection: $settings.dockIconMode,
+                options: DockIconMode.allCases
+            ) { $0.title }
         }
     }
 }
@@ -152,6 +159,7 @@ private struct ClosePanelRow: View {
     var body: some View {
         row(.closePanelAfterConnect, showsDivider: showsDivider) {
             SegmentedSetting(
+                label: LocalizedStringKey(SettingsItemID.closePanelAfterConnect.titleKey),
                 selection: Binding(get: { OnOff(settings.closePanelAfterConnect) }, set: { settings.closePanelAfterConnect = $0.isOn }),
                 options: OnOff.allCases
             ) { $0.title }
@@ -180,7 +188,7 @@ private struct SessionTerminalRow: View {
 
     var body: some View {
         row(.sessionTerminal, subtitle: subtitle, showsDivider: showsDivider) {
-            Picker("", selection: $settings.terminal) {
+            Picker(LocalizedStringKey(SettingsItemID.sessionTerminal.titleKey), selection: $settings.terminal) {
                 ForEach(TerminalApp.allCases) { app in
                     pickerLabel(app).tag(app)
                 }
@@ -239,8 +247,11 @@ private struct OpenModeRow: View {
             subtitle: settings.terminal.supportsNewTab ? nil : Text("This terminal only supports new windows"),
             showsDivider: showsDivider
         ) {
-            SegmentedSetting(selection: $settings.openMode, options: TerminalOpenMode.allCases) { $0.title }
-                .disabled(!settings.terminal.supportsNewTab)
+            SegmentedSetting(
+                label: LocalizedStringKey(SettingsItemID.openMode.titleKey), selection: $settings.openMode,
+                options: TerminalOpenMode.allCases
+            ) { $0.title }
+            .disabled(!settings.terminal.supportsNewTab)
         }
     }
 }
@@ -261,7 +272,8 @@ private struct SSHPathRow: View {
             showsDivider: showsDivider
         ) {
             HStack(spacing: 6) {
-                TextField("", text: $settings.sshPath)
+                TextField(LocalizedStringKey(SettingsItemID.sshPath.titleKey), text: $settings.sshPath)
+                    .labelsHidden()
                     .textFieldStyle(.roundedBorder)
                     .frame(width: 220)
                 if settings.sshPath != "/usr/bin/ssh" {
@@ -393,6 +405,7 @@ private struct SyncRow: View {
     var body: some View {
         row(.sync, subtitle: subtitle, showsDivider: showsDivider) {
             SegmentedSetting(
+                label: LocalizedStringKey(SettingsItemID.sync.titleKey),
                 selection: Binding(
                     get: { OnOff(settings.syncEnabled) },
                     set: { newValue in

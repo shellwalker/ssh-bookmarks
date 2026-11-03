@@ -15,3 +15,23 @@
 "Failed to compile AppleScript" = "Failed to compile AppleScript";
 
 "Failed to export diagnostics" = "Failed to export diagnostics";
+
+"%lld file · %@" = "%lld file · %@";
+
+"%lld files · %@" = "%lld files · %@";
+
+"Imported %lld host. Skipped %lld duplicate." = "Imported %lld host. Skipped %lld duplicate.";
+
+"Imported %lld host. Skipped %lld duplicates." = "Imported %lld host. Skipped %lld duplicates.";
+
+"Imported %lld hosts. Skipped %lld duplicate." = "Imported %lld hosts. Skipped %lld duplicate.";
+
+"Listen on privileged port %@?" = "Listen on privileged port %@?";
+
+"Local port %@ is already in use" = "Local port %@ is already in use";
+
+"No permission to listen on port %@" = "No permission to listen on port %@";
+
+"Port %@ is privileged. Binding it may need extra permission." = "Port %@ is privileged. Binding it may need extra permission.";
+
+"Listen port %@ is used more than once." = "Listen port %@ is used more than once.";

@@ -53,7 +53,7 @@ struct TunnelStartPrompt: Identifiable, Equatable {
     var title: String {
         switch warning {
         case .privileged(let port):
-            return L10n.format("Listen on privileged port %lld?", Int64(port))
+            return L10n.format("Listen on privileged port %@?", String(port))
         case .nonLoopback:
             return String(localized: "Listen beyond this Mac?")
         }
@@ -377,9 +377,9 @@ final class TunnelController: ObservableObject {
     private func message(for phase: TunnelPhase, port: Int) -> String {
         switch phase {
         case .failed(.portInUse):
-            return L10n.format("Local port %lld is already in use", Int64(port))
+            return L10n.format("Local port %@ is already in use", String(port))
         case .failed(.privilegedPort):
-            return L10n.format("No permission to listen on port %lld", Int64(port))
+            return L10n.format("No permission to listen on port %@", String(port))
         case .failed(.authentication):
             return String(localized: "Login was refused. Check the key or the password in the Keychain")
         case .failed(.hostKeyNew):
