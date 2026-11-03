@@ -1,9 +1,10 @@
+import Foundation
+
 #if canImport(Darwin)
     import Darwin
 #elseif canImport(Glibc)
     import Glibc
 #endif
-import Foundation
 
 /// 一次连接对应一个令牌。用过或过期后就不能再换密码。
 public struct AskpassTokenStore: Equatable, Sendable {
@@ -29,8 +30,10 @@ public struct AskpassTokenStore: Equatable, Sendable {
     ) -> String {
         records.removeAll { $0.expiresAt <= now }
         records.removeAll { $0.token == token }
-        records.append(AskpassTokenRecord(
-            token: token, hostID: hostID, username: username, hostname: hostname, expiresAt: now.addingTimeInterval(ttl)))
+        records.append(
+            AskpassTokenRecord(
+                token: token, hostID: hostID, username: username.isEmpty ? NSUserName() : username, hostname: hostname,
+                expiresAt: now.addingTimeInterval(ttl)))
         return token
     }
 
@@ -112,7 +115,8 @@ public enum AskpassTokenFile {
 
     /// 独立锁文件不会随令牌表的原子替换而改变 inode，保护跨进程读改写。
     private static func lockFile(_ fileURL: URL) throws -> Int32 {
-        try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true,
+        try FileManager.default.createDirectory(
+            at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
         let fd = open(fileURL.path + ".lock", O_CREAT | O_RDWR | O_CLOEXEC, 0o600)
         guard fd >= 0 else { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
@@ -146,7 +150,7 @@ public enum AskpassPrompt {
     /// 只认 OpenSSH 标明目标的两种提示，其余（含不带目标的自定义提示）一律拒绝：
     /// - password 认证：`user@host's password:`
     /// - keyboard-interactive（OpenSSH 8.4+ 加前缀）：`(user@host) Password:`
-    /// 站点没填用户名时只核对主机名；用户名区分大小写，主机名不区分；端口不参与身份比较。
+    /// 站点没填用户名时使用本机用户；用户名区分大小写，主机名不区分。歧义跳板在签发前禁用。
     public static func matches(_ prompt: String, username: String, hostname: String) -> Bool {
         guard !hostname.isEmpty else { return false }
         let suffix = "'s password:"
@@ -164,7 +168,7 @@ public enum AskpassPrompt {
         // 用户名允许含 @，主机名不含，所以按最后一个 @ 拆分。
         guard let at = identity.lastIndex(of: "@") else { return false }
         let user = String(identity[..<at])
-        guard !user.isEmpty, username.isEmpty || user == username else { return false }
+        guard !user.isEmpty, user == (username.isEmpty ? NSUserName() : username) else { return false }
         var host = String(identity[identity.index(after: at)...])
         if host.hasPrefix("["), let close = host.firstIndex(of: "]") {
             let tail = host[host.index(after: close)...]
@@ -202,5 +206,16 @@ public enum AskpassLauncherScript {
             export \(AskpassTokenStore.environmentVariable)=\(ShellQuoting.quote(token))
             exec \(ShellQuoting.quote(sshPath)) "$@"
             """
+    }
+}
+
+/// Password prompts omit the port. Same-name hops cannot safely share the target credential.
+public enum AskpassSafety {
+    public static func canAutomaticallyAuthenticate(_ host: SSHHost) -> Bool {
+        let target = host.hostname.trimmingCharacters(in: .whitespaces).lowercased()
+        let jumps = [host.jumpHost] + host.extraOptions.filter { $0.key.lowercased() == "proxyjump" }.map { Optional($0.value) }
+        return !jumps.flatMap { HostSafeguards.hopHosts($0) }.contains {
+            $0.trimmingCharacters(in: .whitespaces).lowercased() == target
+        }
     }
 }
