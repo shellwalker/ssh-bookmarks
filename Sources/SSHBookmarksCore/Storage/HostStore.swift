@@ -1,6 +1,10 @@
 import Foundation
 
 /// hosts.json 的读写。只负责文件 I/O，不含 UI 状态。
+public enum HostFileStoreError: Error, Equatable {
+    case newerSchema
+}
+
 public struct HostFileStore: Sendable {
     public let fileURL: URL
 
@@ -45,6 +49,12 @@ public struct HostFileStore: Sendable {
 
     /// 原子写入，并把文件权限设为 0600（站点信息也算敏感数据）。
     public func save(_ library: HostLibrary) throws {
+        guard library.schemaVersion <= HostLibrary.currentSchemaVersion else { throw HostFileStoreError.newerSchema }
+        // 也检查磁盘上的版本，防止另一版本应用在本次加载后更新文件。
+        if FileManager.default.fileExists(atPath: fileURL.path) {
+            let existing = try load()
+            guard existing.schemaVersion <= HostLibrary.currentSchemaVersion else { throw HostFileStoreError.newerSchema }
+        }
         let fm = FileManager.default
         let dir = fileURL.deletingLastPathComponent()
         try fm.createDirectory(at: dir, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])

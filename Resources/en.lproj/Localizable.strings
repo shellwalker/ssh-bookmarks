@@ -6,3 +6,6 @@
 "Sync kept the greater device id for %lld tied items. When updatedAt differs, the newer side is kept." = "Sync kept the greater device id for %lld tied items. When updatedAt differs, the newer side is kept.";
 "Other File…" = "Other File…";
 "Keepalive and ControlMaster are best set in ~/.ssh/config. Options here apply only to this host." = "Keepalive and ControlMaster are best set in ~/.ssh/config. Options here apply only to this host.";
+
+"Hosts file is from a newer SSH Bookmarks. Update before making changes." = "Hosts file is from a newer SSH Bookmarks. Update before making changes.";
+"Data migration failed. Changes are disabled until migration succeeds. Restart to retry." = "Data migration failed. Changes are disabled until migration succeeds. Restart to retry.";

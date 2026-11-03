@@ -17,6 +17,11 @@ final class HostStoreModel: ObservableObject {
 
     let fileStore: HostFileStore
     private let keychain = KeychainService()
+    private var hasLoadedLibrary = false
+    private var syncing = false
+    private var syncSubscriptions = Set<AnyCancellable>()
+    private var syncPresenter: SyncDirectoryPresenter?
+    private var syncTask: Task<Void, Never>?
     private var undoStack: [HostDeletionUndo] = []
 
     init(fileStore: HostFileStore? = nil) {
@@ -27,33 +32,95 @@ final class HostStoreModel: ObservableObject {
         } else {
             let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
             LegacyDataMigration.moveSupportFolderIfNeeded()
-            self.fileStore = HostFileStore(fileURL: HostFileStore.defaultFileURL(appSupportDirectory: appSupport))
+            let url =
+                LegacyDataMigration.supportMigrationFailed
+                ? ProductPaths.legacySupportDirectory(applicationSupport: appSupport).appendingPathComponent("hosts.json")
+                : HostFileStore.defaultFileURL(appSupportDirectory: appSupport)
+            self.fileStore = HostFileStore(fileURL: url)
         }
+        NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+            .sink { [weak self] _ in
+                Task { @MainActor [weak self] in self?.scheduleSync() }
+            }.store(in: &syncSubscriptions)
+        SettingsStore.shared.$syncEnabled.combineLatest(SettingsStore.shared.$syncFolderPath)
+            .sink { [weak self] _, _ in
+                Task { @MainActor [weak self] in
+                    self?.updateSyncMonitoring()
+                    self?.scheduleSync()
+                }
+            }.store(in: &syncSubscriptions)
+    }
+
+    deinit {
+        syncTask?.cancel()
+        syncPresenter?.stop()
+    }
+
+    private func updateSyncMonitoring() {
+        let settings = SettingsStore.shared
+        let directory = settings.resolvedSyncDirectory
+        if settings.syncEnabled, syncPresenter?.presentedItemURL == directory { return }
+        syncPresenter?.stop()
+        syncPresenter = nil
+        guard settings.syncEnabled else { return }
+        syncPresenter = SyncDirectoryPresenter(directory: directory) { [weak self] in
+            Task { @MainActor [weak self] in self?.scheduleSync() }
+        }
+    }
+
+    private func scheduleSync() {
+        syncTask?.cancel()
+        syncTask = Task { @MainActor [weak self] in
+            do { try await Task.sleep(for: .milliseconds(350)) } catch { return }
+            guard !Task.isCancelled else { return }
+            self?.syncNow()
+        }
+    }
+
+    private func checkWritable() -> Bool {
+        if LegacyDataMigration.supportMigrationFailed || LegacyDataMigration.iCloudMigrationFailed {
+            lastError = String(localized: "Data migration failed. Changes are disabled until migration succeeds. Restart to retry.")
+            return false
+        }
+        guard library.schemaVersion <= HostLibrary.currentSchemaVersion else {
+            lastError = String(localized: "Hosts file is from a newer SSH Bookmarks. Update before making changes.")
+            return false
+        }
+        return true
     }
 
     // MARK: - Persistence
 
     func reload() {
+        hasLoadedLibrary = false
         do {
             library = try fileStore.load()
+            hasLoadedLibrary = true
         } catch {
             lastError = L10n.format("Failed to read hosts file: %@", error.localizedDescription)
             return
         }
+        guard checkWritable() else { return }
+        updateSyncMonitoring()
         syncNow()
     }
 
     private var deviceId: String { SettingsStore.shared.deviceId }
 
-    /// 先写本机 hosts.json，再按设置合并同步文件。返回打成平局的冲突条数；同步关闭时为 0。
+    /// 先写本机 hosts.json，再按设置合并同步文件。nil 表示本机保存失败，0 表示没有平局冲突。
     @discardableResult
-    private func persist() -> Int {
+    private func persist() -> Int? {
+        guard checkWritable() else { return nil }
         library = library.pruningTombstones(now: Date())
         do {
             try fileStore.save(library)
         } catch {
-            lastError = L10n.format("Failed to save hosts file: %@", error.localizedDescription)
-            return 0
+            if error as? HostFileStoreError == .newerSchema {
+                lastError = String(localized: "Hosts file is from a newer SSH Bookmarks. Update before making changes.")
+            } else {
+                lastError = L10n.format("Failed to save hosts file: %@", error.localizedDescription)
+            }
+            return nil
         }
         let conflicts = applySync()
         if conflicts > 0 { lastNotice = syncConflictNotice(conflicts) }
@@ -74,7 +141,9 @@ final class HostStoreModel: ObservableObject {
     }
 
     private func applySync() -> Int {
-        guard SettingsStore.shared.syncEnabled else { return 0 }
+        guard hasLoadedLibrary, SettingsStore.shared.syncEnabled, !syncing, checkWritable() else { return 0 }
+        syncing = true
+        defer { syncing = false }
         do {
             let result = try SyncReconciler.reconcile(
                 local: library,
@@ -82,9 +151,11 @@ final class HostStoreModel: ObservableObject {
                 deviceId: deviceId
             )
             let deletedIDs = Set(library.hosts.map(\.id)).subtracting(result.library.hosts.map(\.id))
-            library = result.library
-            for id in deletedIDs { TunnelController.shared.stop(hostID: id) }
-            try fileStore.save(library)
+            if result.library != library {
+                try fileStore.save(result.library)
+                library = result.library
+                for id in deletedIDs { TunnelController.shared.stop(hostID: id) }
+            }
             return result.conflictCount
         } catch let error as SyncFormatError {
             switch error {
@@ -127,21 +198,30 @@ final class HostStoreModel: ObservableObject {
 
     // MARK: - Mutations
 
-    func save(_ host: SSHHost) {
+    @discardableResult
+    func save(_ host: SSHHost) -> Bool {
+        guard checkWritable() else { return false }
+        let before = library
         var updated = host
         updated.updatedAt = Date()
         updated.updatedByDeviceId = deviceId
         library.upsert(updated)
-        persist()
+        guard persist() != nil else { library = before; return false }
+        return true
     }
 
     func delete(hostID: UUID) {
         let before = library
-        TunnelController.shared.stop(hostID: hostID)
+        guard checkWritable() else { return }
         library.removeHost(id: hostID, deviceId: deviceId)
+        guard persist() != nil else { library = before; return }
+        TunnelController.shared.stop(hostID: hostID)
         registerUndoPoint(before: before)
-        keychain.deleteAll(hostID: hostID)
-        persist()
+        do {
+            try keychain.deleteAll(hostID: hostID)
+        } catch {
+            lastError = L10n.format("Keychain error: %@", error.localizedDescription)
+        }
     }
 
     func toggleFavorite(_ host: SSHHost) {
@@ -153,20 +233,24 @@ final class HostStoreModel: ObservableObject {
     /// 复制站点，返回副本（名称加“副本”后缀）。
     @discardableResult
     func duplicate(_ host: SSHHost) -> SSHHost? {
+        guard checkWritable() else { return nil }
+        let before = library
         guard var copy = library.duplicateHost(id: host.id, labelSuffix: String(localized: " copy")) else { return nil }
         copy.updatedByDeviceId = deviceId
         library.upsert(copy)
-        persist()
+        guard persist() != nil else { library = before; return nil }
         return copy
     }
 
     func move(_ host: SSHHost, toGroup groupID: UUID?) {
+        guard checkWritable() else { return }
+        let before = library
         guard library.moveHost(id: host.id, toGroup: groupID) else { return }
         if var moved = library.hosts.first(where: { $0.id == host.id }) {
             moved.updatedByDeviceId = deviceId
             library.upsert(moved)
         }
-        persist()
+        if persist() == nil { library = before }
     }
 
     enum GroupNameError: LocalizedError {
@@ -183,17 +267,21 @@ final class HostStoreModel: ObservableObject {
 
     @discardableResult
     func addGroup(named rawName: String) throws -> HostGroup {
+        guard checkWritable() else { throw persistenceError() }
+        let before = library
         let name = HostInputParser.normalizedName(rawName)
         guard !name.isEmpty else { throw GroupNameError.empty }
         guard !library.hasGroup(named: name) else { throw GroupNameError.duplicate(name) }
         var group = HostGroup(name: name, sortOrder: (library.groups.map(\.sortOrder).max() ?? -1) + 1)
         group.updatedByDeviceId = deviceId
         library.upsert(group)
-        persist()
+        guard persist() != nil else { library = before; throw persistenceError() }
         return group
     }
 
     func renameGroup(_ group: HostGroup, to rawName: String) throws {
+        guard checkWritable() else { throw persistenceError() }
+        let before = library
         let name = HostInputParser.normalizedName(rawName)
         guard !name.isEmpty else { throw GroupNameError.empty }
         guard !library.hasGroup(named: name, excluding: group.id) else { throw GroupNameError.duplicate(name) }
@@ -202,26 +290,33 @@ final class HostStoreModel: ObservableObject {
         g.updatedAt = Date()
         g.updatedByDeviceId = deviceId
         library.upsert(g)
-        persist()
+        guard persist() != nil else { library = before; throw persistenceError() }
     }
 
     func deleteGroup(id: UUID) {
+        guard checkWritable() else { return }
         let before = library
         library.removeGroup(id: id, deviceId: deviceId)
+        guard persist() != nil else { library = before; return }
         registerUndoPoint(before: before)
-        persist()
     }
 
     func undoLastChange() {
-        guard let previous = undoStack.popLast() else { return }
-        canUndo = !undoStack.isEmpty
+        guard checkWritable(), let previous = undoStack.last else { return }
+        let before = library
         previous.restore(in: &library, deviceId: deviceId)
-        let conflicts = persist()
+        guard let conflicts = persist() else { library = before; return }
+        undoStack.removeLast()
+        canUndo = !undoStack.isEmpty
         if conflicts == 0 {
             lastNotice = String(
                 localized: "Undid the last change. A deleted password stays removed from the Keychain."
             )
         }
+    }
+
+    private func persistenceError() -> NSError {
+        NSError(domain: "SSHBookmarks.Persistence", code: 1, userInfo: [NSLocalizedDescriptionKey: lastError ?? ""])
     }
 
     private func registerUndoPoint(before: HostLibrary) {
@@ -232,14 +327,18 @@ final class HostStoreModel: ObservableObject {
 
     @discardableResult
     func reparentGroup(id: UUID, parentID: UUID?) -> Bool {
+        guard checkWritable() else { return false }
+        let before = library
         guard library.reparentGroup(id: id, parentID: parentID, deviceId: deviceId) else { return false }
-        persist()
+        guard persist() != nil else { library = before; return false }
         return true
     }
 
     /// 从 ~/.ssh/config 导入。同名 hostname 跳过，不覆盖。HostName 只进备注。
     @discardableResult
     func importSSHConfig(from url: URL? = nil) -> SSHConfigImportPlan? {
+        guard checkWritable() else { return nil }
+        let before = library
         let url = url ?? UITestLaunch.sshDirectory.appendingPathComponent("config")
         guard let text = try? String(contentsOf: url, encoding: .utf8) else {
             lastError = L10n.format("Cannot read %@", url.path)
@@ -264,7 +363,7 @@ final class HostStoreModel: ObservableObject {
             library.upsert(host)
         }
         lastError = nil
-        let conflicts = persist()
+        guard let conflicts = persist() else { library = before; return nil }
         if conflicts == 0 { lastNotice = importNotice(plan) }
         return plan
     }
@@ -295,8 +394,15 @@ final class HostStoreModel: ObservableObject {
             lastError = nil
             var h = host
             h.lastConnectedAt = Date()
-            library.upsert(h)
-            let conflicts = persist()
+            let before = library
+            let conflicts: Int?
+            if checkWritable() {
+                library.upsert(h)
+                conflicts = persist()
+                if conflicts == nil { library = before }
+            } else {
+                conflicts = nil
+            }
             if let notice {
                 lastNotice = L10n.format(
                     "%@ is not installed. Opened this session in %@ instead.",

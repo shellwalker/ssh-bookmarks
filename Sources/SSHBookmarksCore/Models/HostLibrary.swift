@@ -38,7 +38,8 @@ public struct HostLibrary: Codable, Equatable, Sendable {
 
     public func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
-        // 保存时写成当前版本。本地文件仍可读更新的版本，避免一次解码失败就把用户的库改名备份。
+        // 更新版本可以读取，但禁止编码写回，以免丢掉未知字段。
+        guard schemaVersion <= Self.currentSchemaVersion else { throw HostFileStoreError.newerSchema }
         try c.encode(Self.currentSchemaVersion, forKey: .schemaVersion)
         try c.encode(groups, forKey: .groups)
         try c.encode(hosts, forKey: .hosts)

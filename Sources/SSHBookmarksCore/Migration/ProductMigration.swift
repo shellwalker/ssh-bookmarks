@@ -51,15 +51,23 @@ public enum SupportDirectoryMigration {
     public static func migrate(applicationSupport: URL, fileManager: FileManager = .default) throws -> Result {
         let legacy = ProductPaths.legacySupportDirectory(applicationSupport: applicationSupport)
         let current = ProductPaths.supportDirectory(applicationSupport: applicationSupport)
-        var currentIsDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: current.path, isDirectory: &currentIsDirectory) {
+        if fileManager.fileExists(atPath: current.appendingPathComponent("hosts.json").path) {
             return .alreadyPresent
         }
         var legacyIsDirectory: ObjCBool = false
         let legacyExists = fileManager.fileExists(atPath: legacy.path, isDirectory: &legacyIsDirectory)
         guard legacyExists, legacyIsDirectory.boolValue else { return .nothingToMove }
         try fileManager.createDirectory(at: applicationSupport, withIntermediateDirectories: true)
-        try fileManager.moveItem(at: legacy, to: current)
+        if fileManager.fileExists(atPath: current.path) {
+            // 新目录里的日志等无关文件不能挡住数据恢复；先复制数据，失败时旧数据仍在。
+            for name in try fileManager.contentsOfDirectory(atPath: legacy.path) {
+                let destination = current.appendingPathComponent(name)
+                guard !fileManager.fileExists(atPath: destination.path) else { continue }
+                try fileManager.copyItem(at: legacy.appendingPathComponent(name), to: destination)
+            }
+        } else {
+            try fileManager.moveItem(at: legacy, to: current)
+        }
         return .moved
     }
 }
@@ -170,6 +178,12 @@ public enum ICloudDirectoryMigration {
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs/\(folderName)", isDirectory: true)
     }
 
+    public static func migratedSyncFolderPath(_ path: String?, home: String) -> String? {
+        let legacy = directory(home: home, folderName: ProductIdentity.legacyICloudDirectoryName).path
+        guard path == legacy else { return path }
+        return directory(home: home, folderName: ProductIdentity.iCloudDirectoryName).path
+    }
+
     public static func migrate(
         home: String,
         fileManager: FileManager = .default,
@@ -177,14 +191,21 @@ public enum ICloudDirectoryMigration {
     ) throws -> Result {
         let legacy = directory(home: home, folderName: ProductIdentity.legacyICloudDirectoryName)
         let current = directory(home: home, folderName: ProductIdentity.iCloudDirectoryName)
-        var currentIsDirectory: ObjCBool = false
-        if fileManager.fileExists(atPath: current.path, isDirectory: &currentIsDirectory) {
+        if fileManager.fileExists(atPath: current.appendingPathComponent(SyncDocument.fileName).path) {
             return .alreadyPresent
         }
         var legacyIsDirectory: ObjCBool = false
         let legacyExists = fileManager.fileExists(atPath: legacy.path, isDirectory: &legacyIsDirectory)
         guard legacyExists, legacyIsDirectory.boolValue else { return .nothingToMove }
-        try move(legacy, current)
+        if fileManager.fileExists(atPath: current.path) {
+            for name in try fileManager.contentsOfDirectory(atPath: legacy.path) {
+                let destination = current.appendingPathComponent(name)
+                guard !fileManager.fileExists(atPath: destination.path) else { continue }
+                try fileManager.copyItem(at: legacy.appendingPathComponent(name), to: destination)
+            }
+        } else {
+            try move(legacy, current)
+        }
         return .moved
     }
 }

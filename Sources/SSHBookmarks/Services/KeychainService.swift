@@ -1,7 +1,7 @@
 import CoreFoundation
 import Foundation
-import Security
 import SSHBookmarksCore
+import Security
 
 enum KeychainError: Error, Equatable {
     case unexpectedStatus(OSStatus)
@@ -110,7 +110,7 @@ struct KeychainService {
     }
 
     /// 删除站点时调用，清理所有相关密钥。
-    func deleteAll(hostID: UUID) {
-        try? delete(account: Self.account(hostID: hostID, kind: .password))
+    func deleteAll(hostID: UUID) throws {
+        try delete(account: Self.account(hostID: hostID, kind: .password))
     }
 }
