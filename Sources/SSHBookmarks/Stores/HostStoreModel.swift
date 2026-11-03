@@ -17,7 +17,7 @@ final class HostStoreModel: ObservableObject {
 
     let fileStore: HostFileStore
     private let keychain = KeychainService()
-    private var undoStack: [HostLibrary] = []
+    private var undoStack: [HostDeletionUndo] = []
 
     init(fileStore: HostFileStore? = nil) {
         if let fileStore {
@@ -81,7 +81,9 @@ final class HostStoreModel: ObservableObject {
                 directory: SettingsStore.shared.resolvedSyncDirectory,
                 deviceId: deviceId
             )
+            let deletedIDs = Set(library.hosts.map(\.id)).subtracting(result.library.hosts.map(\.id))
             library = result.library
+            for id in deletedIDs { TunnelController.shared.stop(hostID: id) }
             try fileStore.save(library)
             return result.conflictCount
         } catch let error as SyncFormatError {
@@ -134,8 +136,10 @@ final class HostStoreModel: ObservableObject {
     }
 
     func delete(hostID: UUID) {
-        registerUndoPoint()
+        let before = library
+        TunnelController.shared.stop(hostID: hostID)
         library.removeHost(id: hostID, deviceId: deviceId)
+        registerUndoPoint(before: before)
         keychain.deleteAll(hostID: hostID)
         persist()
     }
@@ -202,15 +206,16 @@ final class HostStoreModel: ObservableObject {
     }
 
     func deleteGroup(id: UUID) {
-        registerUndoPoint()
+        let before = library
         library.removeGroup(id: id, deviceId: deviceId)
+        registerUndoPoint(before: before)
         persist()
     }
 
     func undoLastChange() {
         guard let previous = undoStack.popLast() else { return }
         canUndo = !undoStack.isEmpty
-        library = previous
+        previous.restore(in: &library, deviceId: deviceId)
         let conflicts = persist()
         if conflicts == 0 {
             lastNotice = String(
@@ -219,8 +224,8 @@ final class HostStoreModel: ObservableObject {
         }
     }
 
-    private func registerUndoPoint() {
-        undoStack.append(library)
+    private func registerUndoPoint(before: HostLibrary) {
+        undoStack.append(HostDeletionUndo(before: before, after: library))
         if undoStack.count > 20 { undoStack.removeFirst() }
         canUndo = !undoStack.isEmpty
     }

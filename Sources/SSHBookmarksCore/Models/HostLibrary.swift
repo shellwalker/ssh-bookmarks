@@ -77,7 +77,7 @@ public extension HostLibrary {
             .map { $0.lowercased() }
         guard !tokens.isEmpty else { return hosts }
 
-        let groupNames = Dictionary(uniqueKeysWithValues: groups.map { ($0.id, $0.name.lowercased()) })
+        let groupNames = Dictionary(groups.map { ($0.id, $0.name.lowercased()) }, uniquingKeysWith: { first, _ in first })
         return hosts.filter { host in
             var haystack = [host.label.lowercased(), host.hostname.lowercased(), host.username.lowercased()]
             haystack.append(contentsOf: host.tags.map { $0.lowercased() })

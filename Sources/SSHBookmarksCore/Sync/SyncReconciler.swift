@@ -52,23 +52,15 @@ enum SyncFileCoordination {
     }
 
     #if os(macOS)
-    static func unresolvedConflictDocuments(of url: URL) -> [SyncDocument] {
+    static func unresolvedConflictDocuments(of url: URL) -> [(NSFileVersion, SyncDocument)] {
         guard FileManager.default.fileExists(atPath: url.path) else { return [] }
         let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
-        var documents: [SyncDocument] = []
+        var documents: [(NSFileVersion, SyncDocument)] = []
         for version in versions {
             guard let data = try? read(url: version.url), let document = try? SyncCodec.decode(data) else { continue }
-            documents.append(document)
+            documents.append((version, document))
         }
         return documents
-    }
-
-    static func resolveConflicts(of url: URL) {
-        let versions = NSFileVersion.unresolvedConflictVersionsOfItem(at: url) ?? []
-        for version in versions {
-            version.isResolved = true
-        }
-        try? NSFileVersion.removeOtherVersionsOfItem(at: url)
     }
 
     private static func coordinatedRead(_ url: URL) throws -> Data? {
@@ -142,7 +134,8 @@ public enum SyncReconciler {
             mergedCopyNames.append(name)
         }
         #if os(macOS)
-        decodedCopies.append(contentsOf: SyncFileCoordination.unresolvedConflictDocuments(of: fileURL))
+        let mergedVersions = SyncFileCoordination.unresolvedConflictDocuments(of: fileURL)
+        decodedCopies.append(contentsOf: mergedVersions.map { $0.1 })
         #endif
 
         let withCopies = SyncMerger.mergeCopies(primary: remote, copies: decodedCopies, now: now, writingDeviceId: deviceId)
@@ -157,7 +150,8 @@ public enum SyncReconciler {
             try? fm.removeItem(at: directory.appendingPathComponent(name))
         }
         #if os(macOS)
-        SyncFileCoordination.resolveConflicts(of: fileURL)
+        // 只解决本轮成功解码并写回的版本；失败和后来出现的版本保持未解决。
+        for (version, _) in mergedVersions { version.isResolved = true }
         #endif
         return SyncReconcileResult(
             library: merged.document.makeLibrary(),

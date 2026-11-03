@@ -87,6 +87,7 @@ public extension HostLibrary {
         guard let original = hosts.first(where: { $0.id == id }) else { return nil }
         var copy = original
         copy.id = UUID()
+        for index in copy.portForwards.indices { copy.portForwards[index].id = UUID() }
         copy.label = original.label + labelSuffix
         copy.lastConnectedAt = nil
         copy.createdAt = now
