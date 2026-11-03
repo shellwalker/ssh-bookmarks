@@ -145,12 +145,15 @@ struct SyncCopySnapshot {
 
     init(url: URL) throws {
         self.url = url
-        let before = try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate
+        let before = try Self.modificationDate(of: url)
         data = try Data(contentsOf: url)
-        guard let before,
-            before == (try url.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)
-        else { throw SyncFormatError.unreadablePrimary }
+        guard let before, before == (try Self.modificationDate(of: url)) else { throw SyncFormatError.unreadablePrimary }
         modifiedAt = before
+    }
+
+    /// URL 的 resourceValues 在 macOS 上会缓存，这里每次直接读文件属性。
+    private static func modificationDate(of url: URL) throws -> Date? {
+        try FileManager.default.attributesOfItem(atPath: url.path)[.modificationDate] as? Date
     }
 
     func isUnchanged() -> Bool {
