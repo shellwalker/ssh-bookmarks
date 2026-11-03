@@ -7,26 +7,26 @@ final class AskpassTokenTests: XCTestCase {
         var store = AskpassTokenStore()
         let now = Date(timeIntervalSince1970: 1_900_000_000)
         let host = UUID()
-        let token = store.issue(hostID: host, now: now, token: "abc123")
-        XCTAssertEqual(store.redeem(token, now: now.addingTimeInterval(1)), host)
-        XCTAssertNil(store.redeem(token, now: now.addingTimeInterval(1)))
+        let token = store.issue(hostID: host, username: "alice", hostname: "target", now: now, token: "abc123")
+        XCTAssertEqual(store.redeem(token, prompt: "alice@target's password:", now: now.addingTimeInterval(1)), host)
+        XCTAssertNil(store.redeem(token, prompt: "alice@target's password:", now: now.addingTimeInterval(1)))
     }
 
     func testExpiredTokenCannotBeRedeemed() {
         var store = AskpassTokenStore()
         let now = Date(timeIntervalSince1970: 1_900_000_000)
-        let token = store.issue(hostID: UUID(), now: now, ttl: 60, token: "soon")
-        XCTAssertNil(store.redeem(token, now: now.addingTimeInterval(60)))
-        XCTAssertNil(store.redeem(token, now: now.addingTimeInterval(61)))
+        let token = store.issue(hostID: UUID(), username: "alice", hostname: "target", now: now, ttl: 60, token: "soon")
+        XCTAssertNil(store.redeem(token, prompt: "alice@target's password:", now: now.addingTimeInterval(60)))
+        XCTAssertNil(store.redeem(token, prompt: "alice@target's password:", now: now.addingTimeInterval(61)))
     }
 
     func testUnknownTokenDoesNotDropOthers() {
         var store = AskpassTokenStore()
         let now = Date(timeIntervalSince1970: 1_900_000_000)
         let host = UUID()
-        _ = store.issue(hostID: host, now: now, token: "keep")
-        XCTAssertNil(store.redeem("nope", now: now))
-        XCTAssertEqual(store.redeem("keep", now: now), host)
+        _ = store.issue(hostID: host, username: "alice", hostname: "target", now: now, token: "keep")
+        XCTAssertNil(store.redeem("nope", prompt: "alice@target's password:", now: now))
+        XCTAssertEqual(store.redeem("keep", prompt: "alice@target's password:", now: now), host)
     }
 
     func testFileRedeemIsSingleUse() throws {
@@ -35,9 +35,9 @@ final class AskpassTokenTests: XCTestCase {
         let url = dir.appendingPathComponent("askpass-tokens.json")
         let now = Date(timeIntervalSince1970: 1_910_000_000)
         let host = UUID()
-        let token = try AskpassTokenFile.issue(hostID: host, fileURL: url, now: now, token: "file-token")
-        XCTAssertEqual(try AskpassTokenFile.redeem(token: token, fileURL: url, now: now.addingTimeInterval(5)), host)
-        XCTAssertNil(try AskpassTokenFile.redeem(token: token, fileURL: url, now: now.addingTimeInterval(6)))
+        let token = try AskpassTokenFile.issue(hostID: host, username: "alice", hostname: "target", fileURL: url, now: now, token: "file-token")
+        XCTAssertEqual(try AskpassTokenFile.redeem(token: token, prompt: "alice@target's password:", fileURL: url, now: now.addingTimeInterval(5)), host)
+        XCTAssertNil(try AskpassTokenFile.redeem(token: token, prompt: "alice@target's password:", fileURL: url, now: now.addingTimeInterval(6)))
         let text = try String(contentsOf: url)
         XCTAssertFalse(text.contains("password"))
     }

@@ -25,7 +25,9 @@ enum AskpassLaunch {
         // 只判断钥匙串里有没有密码。密码本身不进入脚本、参数或日志。
         guard try KeychainService().get(account: account)?.isEmpty == false else { return nil }
         guard let executable = Bundle.main.executablePath else { return nil }
-        let token = try AskpassTokenFile.issue(hostID: host.id, fileURL: AskpassPaths.tokenFileURL(), now: Date())
+        let token = try AskpassTokenFile.issue(
+            hostID: host.id, username: host.username.trimmingCharacters(in: .whitespaces),
+            hostname: host.hostname.trimmingCharacters(in: .whitespaces), fileURL: AskpassPaths.tokenFileURL(), now: Date())
         guard let script = AskpassLauncherScript.contents(askpassExecutable: executable, sshPath: sshPath, token: token) else {
             return nil
         }
@@ -42,7 +44,7 @@ enum AskpassMain {
         guard let token = AskpassTokenStore.token(in: environment), !token.isEmpty else { exit(1) }
         let prompt = CommandLine.arguments.dropFirst().joined(separator: " ")
         guard AskpassPrompt.isPasswordPrompt(prompt) else { exit(2) }
-        guard let hostID = try? AskpassTokenFile.redeem(token: token, fileURL: AskpassPaths.tokenFileURL(), now: Date()) else {
+        guard let hostID = try? AskpassTokenFile.redeem(token: token, prompt: prompt, fileURL: AskpassPaths.tokenFileURL(), now: Date()) else {
             exit(1)
         }
         guard let password = try? KeychainService().get(account: KeychainService.account(hostID: hostID, kind: .password)) else {
