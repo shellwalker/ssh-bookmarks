@@ -173,7 +173,15 @@ enum DiagnosticActions {
         Task { @MainActor in
             let input = await bundleInput(settings: settings, hosts: hosts)
             let data = DiagnosticBundle.makeZIP(input, redactor: redactor(settings: settings, hosts: hosts))
-            try? data.write(to: url, options: .atomic)
+            do {
+                try DiagnosticBundle.write(data, to: url)
+            } catch {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = String(localized: "Failed to export diagnostics")
+                alert.informativeText = error.localizedDescription
+                alert.runModal()
+            }
         }
     }
 

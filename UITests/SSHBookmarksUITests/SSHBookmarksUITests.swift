@@ -333,7 +333,15 @@ final class SSHBookmarksUITests: XCTestCase {
             app.launchEnvironment[key] = value
         }
         app.launch()
-        XCTAssertTrue(marked(app, id.panel).waitForExistence(timeout: 20))
+        if !marked(app, id.panel).waitForExistence(timeout: 20) {
+            let hierarchy = app.debugDescription
+            print(hierarchy)
+            let attachment = XCTAttachment(string: hierarchy)
+            attachment.name = "launch-hierarchy"
+            attachment.lifetime = .keepAlways
+            add(attachment)
+            XCTFail("UI test panel (screen.panel) did not appear within 20 seconds after launch.")
+        }
         return Context(app: app, dataDir: dataDir, logURL: logURL)
     }
 

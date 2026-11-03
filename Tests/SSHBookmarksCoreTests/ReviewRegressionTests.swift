@@ -24,14 +24,14 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertTrue(AskpassPrompt.matches("a@host:2222's password:", username: "a", hostname: "host"))
         XCTAssertFalse(AskpassPrompt.matches("A@host's password:", username: "a", hostname: "host"))
         XCTAssertFalse(AskpassPrompt.matches("a@host's password:\n", username: "a", hostname: "host"))
-        XCTAssertTrue(AskpassPrompt.matches("a@host's password:", username: "", hostname: "host"))
+        XCTAssertTrue(AskpassPrompt.matches("\(NSUserName())@host's password:", username: "", hostname: "host"))
         XCTAssertFalse(AskpassPrompt.matches("a@jump's password:", username: "", hostname: "host"))
         XCTAssertFalse(AskpassPrompt.matches("a@host's password:", username: "a", hostname: ""))
     }
 
     func testAskpassMatchesKeyboardInteractivePromptForTargetOnly() {
         XCTAssertTrue(AskpassPrompt.matches("(alice@target) Password: ", username: "alice", hostname: "target"))
-        XCTAssertTrue(AskpassPrompt.matches("(alice@target) Password:", username: "", hostname: "TARGET"))
+        XCTAssertTrue(AskpassPrompt.matches("(\(NSUserName())@target) Password:", username: "", hostname: "TARGET"))
         XCTAssertFalse(AskpassPrompt.matches("(alice@jump) Password:", username: "alice", hostname: "target"))
         XCTAssertFalse(AskpassPrompt.matches("(alice@target) Verification code:", username: "alice", hostname: "target"))
         XCTAssertFalse(AskpassPrompt.matches("(alice@target) Password: hint", username: "alice", hostname: "target"))
@@ -82,7 +82,10 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertTrue(args.contains("ForkAfterAuthentication=no"))
         XCTAssertTrue(args.contains("ExitOnForwardFailure=yes"))
         XCTAssertTrue(args.contains("ControlPath=none"))
-        for key in ["ForkAfterAuthentication", "ControlMaster", "ControlPath", "ControlPersist", "SessionType", "RemoteCommand", "RequestTTY", "ClearAllForwardings"] {
+        for key in [
+            "ForkAfterAuthentication", "ControlMaster", "ControlPath", "ControlPersist", "SessionType", "RemoteCommand", "RequestTTY",
+            "ClearAllForwardings",
+        ] {
             host.extraOptions = [SSHOption(key: key, value: "yes")]
             XCTAssertThrowsError(try builder.tunnelArguments(for: host, forward: forward), key)
             XCTAssertNoThrow(try builder.arguments(for: host), key)
@@ -180,7 +183,8 @@ final class ReviewRegressionTests: XCTestCase {
         XCTAssertEqual(object["terminal"] as? String, value)
     }
     func testRetryUsesCurrentConfigurationAndHonorsDeletionAndSwitches() throws {
-        let forward = PortForward(kind: .local, listenPort: 8080, destinationHost: "db", destinationPort: 80, quickToggle: true, reconnect: true)
+        let forward = PortForward(
+            kind: .local, listenPort: 8080, destinationHost: "db", destinationPort: 80, quickToggle: true, reconnect: true)
         let host = SSHHost(label: "a", hostname: "old", portForwards: [forward])
         var library = HostLibrary(hosts: [host])
         library.hosts[0].hostname = "new"

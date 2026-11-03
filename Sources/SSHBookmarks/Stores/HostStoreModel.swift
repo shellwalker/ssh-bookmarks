@@ -153,8 +153,10 @@ final class HostStoreModel: ObservableObject {
             let deletedIDs = Set(library.hosts.map(\.id)).subtracting(result.library.hosts.map(\.id))
             if result.library != library {
                 try fileStore.save(result.library)
+                let before = library
                 library = result.library
                 for id in deletedIDs { TunnelController.shared.stop(hostID: id) }
+                reconcileTunnels(from: before)
             }
             return result.conflictCount
         } catch let error as SyncFormatError {
@@ -207,6 +209,24 @@ final class HostStoreModel: ObservableObject {
         updated.updatedByDeviceId = deviceId
         library.upsert(updated)
         guard persist() != nil else { library = before; return false }
+        reconcileTunnels(from: before)
+        return true
+    }
+
+    private func reconcileTunnels(from before: HostLibrary) {
+        for old in before.hosts {
+            if let new = host(id: old.id) { TunnelController.shared.reconcile(old: old, new: new) }
+        }
+    }
+
+    /// Compensate a failed editor credential update without changing credentials again.
+    func restoreHost(_ baseline: SSHHost?, hostID: UUID) -> Bool {
+        if let baseline { return save(baseline) }
+        let before = library
+        guard checkWritable() else { return false }
+        library.removeHost(id: hostID, deviceId: deviceId)
+        guard persist() != nil else { library = before; return false }
+        TunnelController.shared.stop(hostID: hostID)
         return true
     }
 

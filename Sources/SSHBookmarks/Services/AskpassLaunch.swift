@@ -20,7 +20,7 @@ enum AskpassPaths {
 /// 为这一次连接签发令牌，并写出一个 0700 的启动脚本。脚本和令牌都不含密码。
 enum AskpassLaunch {
     static func commandArgv(host: SSHHost, sshArguments: [String], sshPath: String) throws -> [String]? {
-        guard host.authMethod == .password else { return nil }
+        guard host.authMethod == .password, AskpassSafety.canAutomaticallyAuthenticate(host) else { return nil }
         let account = KeychainService.account(hostID: host.id, kind: .password)
         // 只判断钥匙串里有没有密码。密码本身不进入脚本、参数或日志。
         guard try KeychainService().get(account: account)?.isEmpty == false else { return nil }
@@ -44,7 +44,8 @@ enum AskpassMain {
         guard let token = AskpassTokenStore.token(in: environment), !token.isEmpty else { exit(1) }
         let prompt = CommandLine.arguments.dropFirst().joined(separator: " ")
         guard AskpassPrompt.isPasswordPrompt(prompt) else { exit(2) }
-        guard let hostID = try? AskpassTokenFile.redeem(token: token, prompt: prompt, fileURL: AskpassPaths.tokenFileURL(), now: Date()) else {
+        guard let hostID = try? AskpassTokenFile.redeem(token: token, prompt: prompt, fileURL: AskpassPaths.tokenFileURL(), now: Date())
+        else {
             exit(1)
         }
         guard let password = try? KeychainService().get(account: KeychainService.account(hostID: hostID, kind: .password)) else {

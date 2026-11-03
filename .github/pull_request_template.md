@@ -1,5 +1,5 @@
 <!-- 标题用一句话概括改动（英文、约定式前缀可选），例如：Round 5: keyboard tunnel toggle; fix sync row layout -->
-<!-- 目标分支必须是 develop。develop → main 只在 owner 明确说要发版时进行。 -->
+<!-- 普通 PR 的目标分支是 develop。develop → main 的发版 PR 只在 owner 明确说要发版时进行。 -->
 
 ## Summary / 概要
 
@@ -34,7 +34,7 @@
 
 ## Notes / 备注
 
-- 只合并到 `develop`；合并后删除源分支。
+- 普通 PR 只合并到 `develop`；合并后删除源分支。
 
 ## Checklist
 
@@ -42,7 +42,7 @@
 - [ ] 测试已新增或更新
 - [ ] 新增界面文字同时有 zh-Hans 和 en（`Resources/*.lproj/Localizable.strings`）
 - [ ] 日志、提交、PR 描述里没有令牌、密码或其他密钥
-- [ ] 目标分支是 `develop`
-- [ ] 发版 PR（develop → main）：「UI tests (macOS 14, arm64)」已运行并通过
+- [ ] 普通 PR 的目标分支是 `develop`（发版 PR 除外）
+- [ ] 发版 PR（develop → main）：「UI tests (macOS 15, arm64)」已运行并通过
 - [ ] 合并后删除源分支
 - [ ] UI 改动附了截图

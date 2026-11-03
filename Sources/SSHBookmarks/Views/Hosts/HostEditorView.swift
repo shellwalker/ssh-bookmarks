@@ -31,11 +31,15 @@ struct HostEditorView: View {
     let outline: [GroupOutlineEntry]
     let otherHosts: [SSHHost]
     let onSave: (SSHHost) -> String?
+    let onRollback: () -> String?
 
     private let keychain = KeychainService()
     private let otherKeySentinel = "\u{0}other-file"
 
-    init(host: SSHHost, outline: [GroupOutlineEntry], otherHosts: [SSHHost], onSave: @escaping (SSHHost) -> String?) {
+    init(
+        host: SSHHost, outline: [GroupOutlineEntry], otherHosts: [SSHHost],
+        onRollback: @escaping () -> String?, onSave: @escaping (SSHHost) -> String?
+    ) {
         _draft = State(initialValue: host)
         _baseline = State(initialValue: host)
         _portText = State(initialValue: host.port.map(String.init) ?? "")
@@ -44,6 +48,7 @@ struct HostEditorView: View {
         self.outline = outline
         self.otherHosts = otherHosts
         self.onSave = onSave
+        self.onRollback = onRollback
     }
 
     var body: some View {
@@ -584,20 +589,19 @@ struct HostEditorView: View {
             return
         }
 
-        // 先落盘再变更凭据。失败时保留编辑器和密码草稿，允许重试。
-        if let error = onSave(host) {
-            fail(error, field: nil)
-            return
-        }
         let account = KeychainService.account(hostID: host.id, kind: .password)
-        do {
-            if removeStoredPassword {
-                try keychain.delete(account: account)
-            } else if host.authMethod == .password, !password.isEmpty {
-                try keychain.set(password, account: account)
-            }
-        } catch {
-            fail(L10n.format("Keychain error: %@", error.localizedDescription), field: nil)
+        let error = HostSaveTransaction.perform(
+            updated: host, save: onSave, rollback: onRollback,
+            updateCredentials: {
+                if removeStoredPassword {
+                    try keychain.delete(account: account)
+                } else if host.authMethod == .password, !password.isEmpty {
+                    try keychain.set(password, account: account)
+                }
+            },
+            credentialError: { L10n.format("Keychain error: %@", $0.localizedDescription) })
+        if let error {
+            fail(error, field: nil)
             return
         }
         dismiss()

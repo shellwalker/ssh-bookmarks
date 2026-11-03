@@ -14,8 +14,8 @@ concurrency:
 
 jobs:
   release:
-    name: Release (macOS 14, arm64)
-    runs-on: macos-14
+    name: Release (macOS 15, arm64)
+    runs-on: macos-15
     timeout-minutes: 45
     env:
       # secrets 不能直接用在 step 的 if 中，这里转成布尔标记；未配置时自动走 ad-hoc 签名、跳过公证。

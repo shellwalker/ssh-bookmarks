@@ -151,12 +151,12 @@ final class SettingsStore: ObservableObject {
         }
     }
 
-    /// 修改语言后“立即重启”：1 秒后由 /bin/sh 重新打开本应用，然后退出。
+    /// 修改语言后“立即重启”：辅助进程等原 PID 退出后再打开应用，最多等 10 秒。
     /// 应用路径作为 $0 传入，不拼接进脚本，避免路径中的特殊字符被 shell 解释。
     func relaunch() {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: "/bin/sh")
-        process.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", Bundle.main.bundlePath]
+        process.arguments = ["-c", AppRelaunchScript.contents, Bundle.main.bundlePath, String(ProcessInfo.processInfo.processIdentifier)]
         do {
             try process.run()
             NSApp.terminate(nil)

@@ -9,3 +9,9 @@
 
 "Hosts file is from a newer SSH Bookmarks. Update before making changes." = "Hosts file is from a newer SSH Bookmarks. Update before making changes.";
 "Data migration failed. Changes are disabled until migration succeeds. Restart to retry." = "Data migration failed. Changes are disabled until migration succeeds. Restart to retry.";
+
+"example.com or ssh-config alias" = "example.com or ssh-config alias";
+
+"Failed to compile AppleScript" = "Failed to compile AppleScript";
+
+"Failed to export diagnostics" = "Failed to export diagnostics";

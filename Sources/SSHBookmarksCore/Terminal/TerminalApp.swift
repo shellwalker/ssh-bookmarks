@@ -74,11 +74,8 @@ public enum TerminalLaunchPlanner {
         ghosttyVersion: String? = nil,
         startupCommand: String? = nil
     ) -> TerminalLaunchPlan {
-        var commandLine = ShellQuoting.join(argv)
-        if let startupCommand, !startupCommand.isEmpty {
-            // 换行后再输入用户的一行命令。调用方必须已拒绝控制字符。
-            commandLine += "\n" + startupCommand
-        }
+        let remoteArgv = connectionArguments(argv: argv, startupCommand: startupCommand)
+        let commandLine = ShellQuoting.join(remoteArgv)
         let literal = AppleScriptQuoting.stringLiteral(commandLine)
 
         switch terminal {
@@ -160,16 +157,21 @@ public enum TerminalLaunchPlanner {
                     """)
             }
             // 旧版没有 initial input；启动命令作为 SSH 远程命令传递，绝不交给本地 sh。
-            var remoteArgv = argv
-            if let startupCommand, !startupCommand.isEmpty, let separator = remoteArgv.firstIndex(of: "--") {
-                remoteArgv.insert("-t", at: separator)
-                remoteArgv.append(startupCommand + "; exec \"$SHELL\" -l")
-            }
             return .process(
                 executable: "/usr/bin/open",
                 arguments: ["-na", "Ghostty", "--args", "--quit-after-last-window-closed=true", "-e"] + remoteArgv
             )
         }
+    }
+
+    /// OpenSSH joins all arguments after the destination with spaces and sends them to the remote shell.
+    /// Keep the entire script in one argument; only the local shell needs ShellQuoting.join.
+    public static func connectionArguments(argv: [String], startupCommand: String?) -> [String] {
+        guard let startupCommand, !startupCommand.isEmpty else { return argv }
+        var result = argv
+        result.insert("-t", at: result.firstIndex(of: "--") ?? min(1, result.count))
+        result.append(startupCommand + "\nexec \"${SHELL:-/bin/sh}\" -l")
+        return result
     }
 
     /// 简单的语义化版本比较（"1.3.0" vs "1.2.10"）。

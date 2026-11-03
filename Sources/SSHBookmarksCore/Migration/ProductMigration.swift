@@ -40,36 +40,24 @@ public enum SupportDirectoryMigration {
     public enum Result: Equatable {
         /// 旧目录已改名为新目录。
         case moved
-        /// 新目录已经存在，不动旧目录，避免盖掉后来写入的数据。
+        /// 完成标记已存在，或旧目录已搬完。
         case alreadyPresent
         /// 没有旧目录。
         case nothingToMove
     }
 
-    /// 仅当旧文件夹在、新文件夹不在时，把 `MenuSSH` 整个挪成 `SSH Bookmarks`。
-    /// 必须在任何代码创建新目录之前调用，否则空的新目录会挡住这次搬迁。
-    public static func migrate(applicationSupport: URL, fileManager: FileManager = .default) throws -> Result {
+    /// Merge an interrupted migration without overwriting newer data.
+    public static func migrate(
+        applicationSupport: URL, fileManager: FileManager = .default,
+        copy: (URL, URL) throws -> Void = { try FileManager.default.copyItem(at: $0, to: $1) }
+    ) throws -> Result {
         let legacy = ProductPaths.legacySupportDirectory(applicationSupport: applicationSupport)
         let current = ProductPaths.supportDirectory(applicationSupport: applicationSupport)
-        if fileManager.fileExists(atPath: current.appendingPathComponent("hosts.json").path) {
-            return .alreadyPresent
-        }
-        var legacyIsDirectory: ObjCBool = false
-        let legacyExists = fileManager.fileExists(atPath: legacy.path, isDirectory: &legacyIsDirectory)
-        guard legacyExists, legacyIsDirectory.boolValue else { return .nothingToMove }
-        try fileManager.createDirectory(at: applicationSupport, withIntermediateDirectories: true)
-        if fileManager.fileExists(atPath: current.path) {
-            // 新目录里的日志等无关文件不能挡住数据恢复；先复制数据，失败时旧数据仍在。
-            for name in try fileManager.contentsOfDirectory(atPath: legacy.path) {
-                let destination = current.appendingPathComponent(name)
-                guard !fileManager.fileExists(atPath: destination.path) else { continue }
-                try fileManager.copyItem(at: legacy.appendingPathComponent(name), to: destination)
-            }
-        } else {
-            try fileManager.moveItem(at: legacy, to: current)
-        }
-        return .moved
+        return try DirectoryMigration.migrate(
+            legacy: legacy, current: current, fileManager: fileManager,
+            move: { try fileManager.moveItem(at: $0, to: $1) }, copy: copy)
     }
+
 }
 
 public enum DefaultsMigration {
@@ -165,7 +153,7 @@ public enum ProductEnvironment {
     }
 }
 
-/// iCloud 同步目录从 `MenuSSH` 改到 `SSH Bookmarks`。旧目录在、新目录不在时才搬。
+/// iCloud 同步目录从 `MenuSSH` 改到 `SSH Bookmarks`；已有目录时补齐未迁入内容。
 public enum ICloudDirectoryMigration {
     public enum Result: Equatable {
         case moved
@@ -187,25 +175,77 @@ public enum ICloudDirectoryMigration {
     public static func migrate(
         home: String,
         fileManager: FileManager = .default,
+        copy: (URL, URL) throws -> Void = { try FileManager.default.copyItem(at: $0, to: $1) },
         move: (URL, URL) throws -> Void = { try FileManager.default.moveItem(at: $0, to: $1) }
     ) throws -> Result {
         let legacy = directory(home: home, folderName: ProductIdentity.legacyICloudDirectoryName)
         let current = directory(home: home, folderName: ProductIdentity.iCloudDirectoryName)
-        if fileManager.fileExists(atPath: current.appendingPathComponent(SyncDocument.fileName).path) {
-            return .alreadyPresent
+        switch try DirectoryMigration.migrate(legacy: legacy, current: current, fileManager: fileManager, move: move, copy: copy) {
+        case .moved: return .moved
+        case .alreadyPresent: return .alreadyPresent
+        case .nothingToMove: return .nothingToMove
         }
-        var legacyIsDirectory: ObjCBool = false
-        let legacyExists = fileManager.fileExists(atPath: legacy.path, isDirectory: &legacyIsDirectory)
-        guard legacyExists, legacyIsDirectory.boolValue else { return .nothingToMove }
-        if fileManager.fileExists(atPath: current.path) {
-            for name in try fileManager.contentsOfDirectory(atPath: legacy.path) {
-                let destination = current.appendingPathComponent(name)
-                guard !fileManager.fileExists(atPath: destination.path) else { continue }
-                try fileManager.copyItem(at: legacy.appendingPathComponent(name), to: destination)
+    }
+}
+
+/// Completion is recorded only after every legacy entry has been accounted for.
+private enum DirectoryMigration {
+    static func migrate(
+        legacy: URL, current: URL, fileManager: FileManager,
+        move: (URL, URL) throws -> Void, copy: (URL, URL) throws -> Void
+    ) throws -> SupportDirectoryMigration.Result {
+        let marker = current.appendingPathComponent(".migration-complete")
+        if fileManager.fileExists(atPath: marker.path) { return .alreadyPresent }
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: legacy.path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            // A coordinated move can succeed before its completion/error is reported.
+            // With no source left, an existing destination has nothing further to merge.
+            if fileManager.fileExists(atPath: current.path) {
+                try Data().write(to: marker, options: .atomic)
+                return .alreadyPresent
             }
+            return .nothingToMove
+        }
+        try fileManager.createDirectory(at: current.deletingLastPathComponent(), withIntermediateDirectories: true)
+        if fileManager.fileExists(atPath: current.path) {
+            try merge(legacy, into: current, fileManager: fileManager, copy: copy)
         } else {
             try move(legacy, current)
         }
+        try Data().write(to: marker, options: .atomic)
         return .moved
+    }
+
+    private static func merge(
+        _ source: URL, into destination: URL, fileManager: FileManager, copy: (URL, URL) throws -> Void
+    ) throws {
+        for name in try fileManager.contentsOfDirectory(atPath: source.path).sorted() where name != ".migration-complete" {
+            let from = source.appendingPathComponent(name)
+            let to = destination.appendingPathComponent(name)
+            if !fileManager.fileExists(atPath: to.path) {
+                try copy(from, to)
+                continue
+            }
+            if fileManager.contentsEqual(atPath: from.path, andPath: to.path) { continue }
+            let sourceValues = try from.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            let targetValues = try to.resourceValues(forKeys: [.isDirectoryKey, .isSymbolicLinkKey])
+            if sourceValues.isDirectory == true, targetValues.isDirectory == true,
+                sourceValues.isSymbolicLink != true, targetValues.isSymbolicLink != true
+            {
+                try merge(from, into: to, fileManager: fileManager, copy: copy)
+                continue
+            }
+            // Stable names let retries recognize a conflict already copied before a later failure.
+            var index = 1
+            while true {
+                let conflict = destination.appendingPathComponent(name + ".migration-conflict-\(index)")
+                if !fileManager.fileExists(atPath: conflict.path) {
+                    try copy(from, conflict)
+                    break
+                }
+                if fileManager.contentsEqual(atPath: from.path, andPath: conflict.path) { break }
+                index += 1
+            }
+        }
     }
 }

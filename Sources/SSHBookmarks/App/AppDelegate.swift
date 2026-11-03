@@ -1,8 +1,10 @@
 import AppKit
+import SwiftUI
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private var windowObserver: NSObjectProtocol?
+    private var uiTestPanelWindow: NSWindow?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         let settings = SettingsStore.shared
@@ -27,6 +29,35 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                         window.makeKeyAndOrderFront(nil)
                         Self.placeWideWindowForUITest(window)
                     }
+                }
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+                MainActor.assumeIsolated {
+                    // 优先保留 SwiftUI 已显示的面板，避免重复的辅助功能元素。
+                    guard let self,
+                        !NSApp.windows.contains(where: {
+                            $0.isVisible
+                                && ($0.identifier?.rawValue.contains("ui-test-panel") == true || $0.frame.width < 600)
+                        })
+                    else { return }
+                    let window = NSWindow(
+                        contentRect: NSRect(x: 0, y: 0, width: 380, height: 520),
+                        styleMask: [.titled, .closable, .resizable],
+                        backing: .buffered, defer: false
+                    )
+                    window.identifier = NSUserInterfaceItemIdentifier("ui-test-panel-fallback")
+                    window.title = "SSH Bookmarks"
+                    window.isReleasedWhenClosed = false
+                    window.contentView = NSHostingView(
+                        rootView: MenuBarContentView()
+                            .environmentObject(HostStoreModel.shared)
+                            .environmentObject(SettingsStore.shared)
+                            .environmentObject(TunnelController.shared)
+                    )
+                    self.uiTestPanelWindow = window
+                    Self.placeWideWindowForUITest(window)
+                    window.makeKeyAndOrderFront(nil)
+                    AppActivation.bringToFront()
                 }
             }
         }

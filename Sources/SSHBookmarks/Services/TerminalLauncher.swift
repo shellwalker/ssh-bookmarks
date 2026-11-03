@@ -97,7 +97,7 @@ struct TerminalLauncher {
             // TODO(M1)：NSAppleScript 是同步调用，首次授权弹窗期间会阻塞主线程；
             // 后续可改为后台串行队列 + NSAppleScript（需保证同一线程）或 NSUserAppleScriptTask。
             guard let script = NSAppleScript(source: source) else {
-                throw TerminalLaunchError.appleScript("Failed to compile AppleScript")
+                throw TerminalLaunchError.appleScript(String(localized: "Failed to compile AppleScript"))
             }
             var errorInfo: NSDictionary?
             script.executeAndReturnError(&errorInfo)
